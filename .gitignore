@@ -1,0 +1,28 @@
+# Node.js dependencies
+**/node_modules/
+
+# Environment variables
+**/.env
+
+# Build folders
+**/dist/
+**/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+
+# Python virtual environments
+venv/
+.venv/
