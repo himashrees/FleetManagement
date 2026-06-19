@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plus, Play, Square, X, RefreshCw, MapPin, Clock, Truck, Ban, Pencil } from 'lucide-react'
+import { Plus, Play, Square, X, RefreshCw, MapPin, Clock, Truck, Ban, Pencil, Calendar } from 'lucide-react'
 import { tripAPI, vehicleAPI, driverAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 
 const STATUS_BADGE = {
-  planned:     'badge-slate',
+  planned:     'badge-amber',
   in_progress: 'badge-blue',
   completed:   'badge-green',
   cancelled:   'badge-red',
@@ -13,6 +13,8 @@ const STATUS_BADGE = {
 const EMPTY_FORM = {
   vehicle_id: '', driver_id: '', start_location: '', end_location: '',
   start_odometer: '', purpose: '', notes: '',
+  trip_date: new Date().toISOString().split('T')[0],
+  start_time: '', expected_end_time: '',
 }
 
 export default function Trips() {
@@ -20,7 +22,7 @@ export default function Trips() {
   const [vehicles, setVehicles] = useState([])
   const [drivers,  setDrivers]  = useState([])
   const [loading,  setLoading]  = useState(true)
-  const [modal,    setModal]    = useState(null)   // 'schedule' | 'edit' | 'start' | 'end' | 'cancel'
+  const [modal,    setModal]    = useState(null)
   const [selected, setSelected] = useState(null)
   const [form,     setForm]     = useState(EMPTY_FORM)
   const [endForm,  setEndForm]  = useState({ end_odometer: '', fuel_used: '', end_location: '' })
@@ -28,7 +30,6 @@ export default function Trips() {
   const [autoDriver, setAutoDriver] = useState(null)
   const toast = useToast()
 
-  /* ── load ── */
   const load = () => {
     setLoading(true)
     Promise.all([
@@ -46,7 +47,7 @@ export default function Trips() {
   }
   useEffect(() => { load() }, [])
 
-  /* ── vehicle pick → auto-fill driver + odometer ── */
+  /* vehicle pick → auto-fill driver + odometer (read-only) */
   const handleVehicleChange = (e) => {
     const vid = e.target.value
     const vehicle  = vehicles.find(v => String(v.id) === String(vid))
@@ -64,24 +65,20 @@ export default function Trips() {
 
   const f  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   const ef = k => e => setEndForm(p => ({ ...p, [k]: e.target.value }))
+  const getDriver = id => drivers.find(d => String(d.id) === String(id))
 
-  const getVehicle = id => vehicles.find(v => String(v.id) === String(id))
-  const getDriver  = id => drivers.find(d => String(d.id) === String(id))
-
-  /* ── SCHEDULE (create planned trip) ── */
   const handleSchedule = async () => {
     if (!form.vehicle_id) { toast.error('Select a vehicle'); return }
     if (!form.driver_id)  { toast.error('Select a driver');  return }
     setSaving(true)
     try {
       await tripAPI.create(form)
-      toast.success('Trip scheduled — driver has been notified')
+      toast.success('Trip scheduled — driver has been notified ✓')
       setModal(null); load()
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to schedule') }
     finally { setSaving(false) }
   }
 
-  /* ── EDIT planned trip ── */
   const handleUpdate = async () => {
     setSaving(true)
     try {
@@ -92,30 +89,27 @@ export default function Trips() {
     finally { setSaving(false) }
   }
 
-  /* ── START planned trip ── */
   const handleStart = async () => {
     setSaving(true)
     try {
-      await tripAPI.startTrip(selected.id, { start_odometer: form.start_odometer })
-      toast.success('Trip started')
+      await tripAPI.startTrip(selected.id, { start_odometer: selected.start_odometer })
+      toast.success('Trip started — status is now IN PROGRESS')
       setModal(null); load()
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to start') }
     finally { setSaving(false) }
   }
 
-  /* ── END in-progress trip ── */
   const handleEnd = async () => {
     if (!endForm.end_odometer) { toast.error('Enter end odometer'); return }
     setSaving(true)
     try {
       await tripAPI.endTrip(selected.id, endForm)
-      toast.success('Trip completed')
+      toast.success('Trip completed ✓')
       setModal(null); load()
     } catch (err) { toast.error(err.response?.data?.message || 'Failed to end') }
     finally { setSaving(false) }
   }
 
-  /* ── CANCEL trip ── */
   const handleCancel = async () => {
     setSaving(true)
     try {
@@ -127,17 +121,17 @@ export default function Trips() {
   }
 
   const openSchedule = () => {
-    setForm(EMPTY_FORM); setAutoDriver(null); setModal('schedule')
+    setForm({ ...EMPTY_FORM, trip_date: new Date().toISOString().split('T')[0] })
+    setAutoDriver(null); setModal('schedule')
   }
 
-  /* ── available drivers count ── */
   const availableDrivers = drivers.filter(d => d.status === 'available')
   const onTripCount      = drivers.filter(d => d.status === 'on_trip').length
 
   return (
     <div className="page-enter">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Trip <span className="accent">Management</span></h1>
@@ -146,19 +140,19 @@ export default function Trips() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn-icon" onClick={load}><RefreshCw size={14} /></button>
           <button className="btn btn-primary" onClick={openSchedule}>
-            <Plus size={14} /> SCHEDULE TRIP
+            <Plus size={14} /> Schedule Trip
           </button>
         </div>
       </div>
 
-      {/* ── Table ── */}
+      {/* Table */}
       <div className="table-container">
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>ID</th><th>Vehicle</th><th>Driver</th>
-                <th>From</th><th>To</th><th>Scheduled / Started</th>
+                <th>From</th><th>To</th><th>Date</th>
                 <th>Distance</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
@@ -171,28 +165,20 @@ export default function Trips() {
                 const driver = getDriver(t.driver_id)
                 return (
                   <tr key={t.id}>
-                    <td>
-                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontSize: '0.8rem' }}>#{t.id}</span>
-                    </td>
+                    <td><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontSize: '0.8rem' }}>#{t.id}</span></td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Truck size={12} color="#6b7280" />
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>
-                          {t.vehicle?.registration_no || '—'}
-                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>{t.vehicle?.registration_no || '—'}</span>
                       </div>
                     </td>
-                    <td>
-                      <span style={{ fontSize: '0.84rem' }}>
-                        {driver?.user?.name || (driver ? `Driver #${driver.id}` : `#${t.driver_id}`)}
-                      </span>
-                    </td>
-                    <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td><span style={{ fontSize: '0.84rem' }}>{driver?.user?.name || `#${t.driver_id}`}</span></td>
+                    <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <MapPin size={11} color="#9ca3af" />{t.start_location || '—'}
                       </div>
                     </td>
-                    <td style={{ maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <MapPin size={11} color="#2563eb" />{t.end_location || '—'}
                       </div>
@@ -201,9 +187,7 @@ export default function Trips() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={11} color="#9ca3af" />
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#6b7280' }}>
-                          {(t.start_time || t.createdAt)
-                            ? new Date(t.start_time || t.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-                            : '—'}
+                          {t.trip_date || (t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-IN') : '—')}
                         </span>
                       </div>
                     </td>
@@ -213,13 +197,17 @@ export default function Trips() {
                       </span>
                     </td>
                     <td>
-                      <span className={`badge ${STATUS_BADGE[t.status] || 'badge-slate'}`}>
-                        {t.status?.replace('_', ' ')}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {t.status === 'in_progress' && (
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#2563eb', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+                        )}
+                        <span className={`badge ${STATUS_BADGE[t.status] || 'badge-slate'}`}>
+                          {t.status?.replace('_', ' ')}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 5 }}>
-                        {/* Edit — only for planned */}
                         {t.status === 'planned' && (
                           <button className="btn-icon" title="Edit" onClick={() => {
                             setSelected(t)
@@ -227,39 +215,28 @@ export default function Trips() {
                               vehicle_id: t.vehicle_id, driver_id: t.driver_id,
                               start_location: t.start_location || '', end_location: t.end_location || '',
                               start_odometer: t.start_odometer || '', purpose: t.purpose || '', notes: t.notes || '',
+                              trip_date: t.trip_date || '', start_time: t.start_time || '',
+                              expected_end_time: t.expected_end_time || '',
                             })
                             setModal('edit')
-                          }}>
-                            <Pencil size={13} />
-                          </button>
+                          }}><Pencil size={13} /></button>
                         )}
-                        {/* Start — only for planned */}
                         {t.status === 'planned' && (
                           <button className="btn-icon" title="Start trip" style={{ color: '#16a34a' }} onClick={() => {
-                            setSelected(t)
-                            setForm(p => ({ ...p, start_odometer: t.start_odometer || '' }))
-                            setModal('start')
-                          }}>
-                            <Play size={13} />
-                          </button>
+                            setSelected(t); setModal('start')
+                          }}><Play size={13} /></button>
                         )}
-                        {/* End — only for in_progress */}
                         {t.status === 'in_progress' && (
                           <button className="btn-icon" title="End trip" style={{ color: '#2563eb' }} onClick={() => {
                             setSelected(t)
                             setEndForm({ end_odometer: '', fuel_used: '', end_location: t.end_location || '' })
                             setModal('end')
-                          }}>
-                            <Square size={13} />
-                          </button>
+                          }}><Square size={13} /></button>
                         )}
-                        {/* Cancel — planned or in_progress */}
                         {(t.status === 'planned' || t.status === 'in_progress') && (
-                          <button className="btn-icon" title="Cancel trip" style={{ color: '#dc2626' }} onClick={() => {
+                          <button className="btn-icon" title="Cancel" style={{ color: '#dc2626' }} onClick={() => {
                             setSelected(t); setModal('cancel')
-                          }}>
-                            <Ban size={13} />
-                          </button>
+                          }}><Ban size={13} /></button>
                         )}
                       </div>
                     </td>
@@ -271,19 +248,18 @@ export default function Trips() {
         </div>
       </div>
 
-      {/* ════════════════════════════════════════════
-          MODAL: Schedule new trip
-      ════════════════════════════════════════════ */}
+      {/* ── MODAL: Schedule ── */}
       {modal === 'schedule' && (
         <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="modal modal-wide">
             <div className="modal-header">
-              <h2 className="modal-title"><Plus size={15} /> Schedule New Trip</h2>
+              <h2 className="modal-title"><Calendar size={15} /> Schedule New Trip</h2>
               <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Vehicle */}
+
+              {/* Vehicle — active only */}
               <div className="form-group">
                 <label className="form-label">Vehicle *</label>
                 <select className="input" value={form.vehicle_id} onChange={handleVehicleChange}>
@@ -293,14 +269,14 @@ export default function Trips() {
                     return (
                       <option key={v.id} value={v.id}>
                         {v.registration_no} — {v.make} {v.model}
-                        {hasDriver ? ` ✓ (${hasDriver.user?.name || 'driver assigned'})` : ' (no available driver)'}
+                        {hasDriver ? ` ✓ (${hasDriver.user?.name || 'driver ready'})` : ''}
                       </option>
                     )
                   })}
                 </select>
               </div>
 
-              {/* Driver */}
+              {/* Driver — available only */}
               <div className="form-group">
                 <label className="form-label">Driver *</label>
                 {autoDriver ? (
@@ -309,12 +285,8 @@ export default function Trips() {
                       <span style={{ color: '#fff', fontSize: 14 }}>✓</span>
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#15803d' }}>
-                        {autoDriver.user?.name || `Driver #${autoDriver.id}`}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#166534' }}>
-                        Auto-assigned · License: {autoDriver.license_number}
-                      </div>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#15803d' }}>{autoDriver.user?.name || `Driver #${autoDriver.id}`}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#166534' }}>Auto-assigned · License: {autoDriver.license_number}</div>
                     </div>
                     <button style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
                       onClick={() => { setAutoDriver(null); setForm(p => ({ ...p, driver_id: '' })) }}>
@@ -326,26 +298,32 @@ export default function Trips() {
                     <select className="input" value={form.driver_id} onChange={f('driver_id')}>
                       <option value="">Select available driver...</option>
                       {availableDrivers.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.user?.name || `Driver #${d.id}`} — {d.license_number}
-                        </option>
+                        <option key={d.id} value={d.id}>{d.user?.name || `Driver #${d.id}`} — {d.license_number}</option>
                       ))}
                     </select>
                     {availableDrivers.length === 0 && (
-                      <p style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: 4 }}>
-                        ⚠ No available drivers right now. All are on trip or off duty.
-                      </p>
+                      <p style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: 4 }}>⚠ No available drivers right now.</p>
                     )}
                     {onTripCount > 0 && (
-                      <p style={{ fontSize: '0.73rem', color: '#9ca3af', marginTop: 4 }}>
-                        {onTripCount} driver(s) currently on trip are hidden.
-                      </p>
+                      <p style={{ fontSize: '0.73rem', color: '#9ca3af', marginTop: 4 }}>{onTripCount} driver(s) on trip are hidden.</p>
                     )}
                   </>
                 )}
               </div>
 
-              {/* Locations */}
+              {/* Trip Date + Start Time */}
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Trip Date</label>
+                  <input className="input" type="date" value={form.trip_date} onChange={f('trip_date')} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Start Time</label>
+                  <input className="input" type="time" value={form.start_time} onChange={f('start_time')} />
+                </div>
+              </div>
+
+              {/* From + To */}
               <div className="form-grid-2">
                 <div className="form-group">
                   <label className="form-label">From (Start Location)</label>
@@ -357,21 +335,38 @@ export default function Trips() {
                 </div>
               </div>
 
+              {/* Start Odometer (read-only) + Expected End Time */}
               <div className="form-grid-2">
                 <div className="form-group">
-                  <label className="form-label">Start Odometer (km)</label>
-                  <input className="input" type="number" value={form.start_odometer} onChange={f('start_odometer')}
-                    placeholder={form.vehicle_id ? `Current: ${getVehicle(form.vehicle_id)?.odometer_km || 0} km` : '0'} />
+                  <label className="form-label">
+                    Start Odometer (km)
+                   
+                  </label>
+                  <input className="input" type="number" value={form.start_odometer} readOnly
+                    style={{ background: 'var(--bg-canvas)', cursor: 'not-allowed', color: '#6b7280' }}
+                    placeholder="Select a vehicle first" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Purpose</label>
-                  <input className="input" value={form.purpose} onChange={f('purpose')} placeholder="Delivery / Transport / Pickup..." />
+                  <label className="form-label">Expected End Time <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>(Optional)</span></label>
+                  <input className="input" type="time" value={form.expected_end_time} onChange={f('expected_end_time')} />
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Notes</label>
-                <textarea className="input" value={form.notes} onChange={f('notes')} rows={2} />
+              {/* Purpose + Notes */}
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Purpose</label>
+                  <select className="input" value={form.purpose} onChange={f('purpose')}>
+                    <option value="">Select purpose...</option>
+                    {['Delivery', 'Pickup', 'Transport', 'Maintenance Run', 'Client Visit', 'Other'].map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Notes <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>(Optional)</span></label>
+                  <input className="input" value={form.notes} onChange={f('notes')} placeholder="Any additional info..." />
+                </div>
               </div>
             </div>
 
@@ -385,9 +380,7 @@ export default function Trips() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════
-          MODAL: Edit planned trip
-      ════════════════════════════════════════════ */}
+      {/* ── MODAL: Edit ── */}
       {modal === 'edit' && selected && (
         <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="modal modal-wide">
@@ -395,9 +388,16 @@ export default function Trips() {
               <h2 className="modal-title"><Pencil size={15} /> Edit Trip #{selected.id}</h2>
               <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Trip Date</label>
+                  <input className="input" type="date" value={form.trip_date} onChange={f('trip_date')} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Start Time</label>
+                  <input className="input" type="time" value={form.start_time} onChange={f('start_time')} />
+                </div>
                 <div className="form-group">
                   <label className="form-label">From</label>
                   <input className="input" value={form.start_location} onChange={f('start_location')} />
@@ -407,12 +407,17 @@ export default function Trips() {
                   <input className="input" value={form.end_location} onChange={f('end_location')} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Start Odometer (km)</label>
-                  <input className="input" type="number" value={form.start_odometer} onChange={f('start_odometer')} />
+                  <label className="form-label">Purpose</label>
+                  <select className="input" value={form.purpose} onChange={f('purpose')}>
+                    <option value="">Select purpose...</option>
+                    {['Delivery', 'Pickup', 'Transport', 'Maintenance Run', 'Client Visit', 'Other'].map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Purpose</label>
-                  <input className="input" value={form.purpose} onChange={f('purpose')} />
+                  <label className="form-label">Expected End Time</label>
+                  <input className="input" type="time" value={form.expected_end_time} onChange={f('expected_end_time')} />
                 </div>
               </div>
               <div className="form-group">
@@ -420,7 +425,6 @@ export default function Trips() {
                 <textarea className="input" value={form.notes} onChange={f('notes')} rows={2} />
               </div>
             </div>
-
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleUpdate} disabled={saving}>
@@ -431,9 +435,7 @@ export default function Trips() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════
-          MODAL: Start trip confirmation
-      ════════════════════════════════════════════ */}
+      {/* ── MODAL: Start ── */}
       {modal === 'start' && selected && (
         <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="modal">
@@ -441,41 +443,39 @@ export default function Trips() {
               <h2 className="modal-title"><Play size={14} /> Start Trip #{selected.id}</h2>
               <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
             </div>
-
-            {/* Summary */}
-            <div style={{ padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 8, marginBottom: 16, fontSize: '0.83rem', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              <div><span style={{ color: '#9ca3af' }}>Vehicle</span><br />
-                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 600 }}>{selected.vehicle?.registration_no || `#${selected.vehicle_id}`}</span>
+            <div style={{ padding: '14px', background: 'var(--bg-canvas)', borderRadius: 8, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 20, fontSize: '0.83rem' }}>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>VEHICLE</div>
+                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 700 }}>{selected.vehicle?.registration_no || `#${selected.vehicle_id}`}</div>
               </div>
-              <div><span style={{ color: '#9ca3af' }}>Driver</span><br />
-                <span style={{ fontWeight: 600 }}>{getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}</span>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>DRIVER</div>
+                <div style={{ fontWeight: 600 }}>{getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}</div>
               </div>
-              <div><span style={{ color: '#9ca3af' }}>Route</span><br />
-                <span>{selected.start_location || '—'} → {selected.end_location || '—'}</span>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>ROUTE</div>
+                <div>{selected.start_location || '—'} → {selected.end_location || '—'}</div>
+              </div>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>START ODOMETER</div>
+                <div style={{ fontFamily: 'var(--font-mono)' }}>{selected.start_odometer || '—'} km</div>
               </div>
             </div>
-
-            <div className="form-group">
-              <label className="form-label">Confirm Start Odometer (km)</label>
-              <input className="input" type="number" value={form.start_odometer}
-                onChange={f('start_odometer')}
-                placeholder={selected.start_odometer || 'Enter current odometer'} />
+            <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, fontSize: '0.78rem', color: '#15803d', marginBottom: 16 }}>
+              ✓ Clicking "Start Trip" will set status to <strong>IN PROGRESS</strong> and mark the driver as <strong>ON TRIP</strong>.
             </div>
-
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleStart} disabled={saving}
                 style={{ background: '#16a34a', borderColor: '#16a34a' }}>
-                <Play size={13} />{saving ? 'Starting...' : 'Confirm Start'}
+                <Play size={13} />{saving ? 'Starting...' : 'Start Trip'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ════════════════════════════════════════════
-          MODAL: End trip
-      ════════════════════════════════════════════ */}
+      {/* ── MODAL: End ── */}
       {modal === 'end' && selected && (
         <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
           <div className="modal">
@@ -483,19 +483,20 @@ export default function Trips() {
               <h2 className="modal-title"><Square size={14} /> End Trip #{selected.id}</h2>
               <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
             </div>
-
-            <div style={{ padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 8, marginBottom: 16, fontSize: '0.82rem', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              <div><span style={{ color: '#9ca3af' }}>Vehicle</span><br />
-                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 600 }}>{selected.vehicle?.registration_no}</span>
+            <div style={{ padding: '14px', background: 'var(--bg-canvas)', borderRadius: 8, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 20, fontSize: '0.83rem' }}>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>VEHICLE</div>
+                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 700 }}>{selected.vehicle?.registration_no}</div>
               </div>
-              <div><span style={{ color: '#9ca3af' }}>Driver</span><br />
-                <span style={{ fontWeight: 600 }}>{getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}</span>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>DRIVER</div>
+                <div style={{ fontWeight: 600 }}>{getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}</div>
               </div>
-              <div><span style={{ color: '#9ca3af' }}>Start Odo</span><br />
-                <span style={{ fontFamily: 'var(--font-mono)' }}>{selected.start_odometer} km</span>
+              <div>
+                <div style={{ color: '#9ca3af', fontSize: '0.73rem', marginBottom: 2 }}>START ODO</div>
+                <div style={{ fontFamily: 'var(--font-mono)' }}>{selected.start_odometer} km</div>
               </div>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div className="form-group">
                 <label className="form-label">End Location</label>
@@ -515,7 +516,6 @@ export default function Trips() {
                 <input className="input" type="number" value={endForm.fuel_used} onChange={ef('fuel_used')} />
               </div>
             </div>
-
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
               <button className="btn btn-primary" onClick={handleEnd} disabled={saving}>
@@ -526,26 +526,24 @@ export default function Trips() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════
-          MODAL: Cancel confirmation
-      ════════════════════════════════════════════ */}
+      {/* ── MODAL: Cancel ── */}
       {modal === 'cancel' && selected && (
         <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
-          <div className="modal" style={{ maxWidth: 400 }}>
+          <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
-              <h2 className="modal-title" style={{ color: 'var(--red)' }}><Ban size={15} /> Cancel Trip</h2>
+              <h2 className="modal-title" style={{ color: 'var(--red)' }}><Ban size={15} /> Cancel Trip #{selected.id}</h2>
               <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
             </div>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Cancel <strong>Trip #{selected.id}</strong>?
+              Are you sure you want to cancel this trip?
             </p>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              {selected.start_location} → {selected.end_location}<br />
-              Driver: {getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}
-            </p>
+            <div style={{ padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 8, fontSize: '0.82rem', marginBottom: 12 }}>
+              <div><strong>{selected.start_location || '—'}</strong> → <strong>{selected.end_location || '—'}</strong></div>
+              <div style={{ color: '#6b7280', marginTop: 4 }}>Driver: {getDriver(selected.driver_id)?.user?.name || `#${selected.driver_id}`}</div>
+            </div>
             {selected.status === 'in_progress' && (
-              <div className="notice notice-amber" style={{ marginTop: 12 }}>
-                ⚠ This trip is currently in progress. The driver will be marked available.
+              <div style={{ padding: '10px 14px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: '0.78rem', color: '#92400e', marginBottom: 12 }}>
+                ⚠ This trip is IN PROGRESS. Driver will be marked available.
               </div>
             )}
             <div className="modal-footer">
