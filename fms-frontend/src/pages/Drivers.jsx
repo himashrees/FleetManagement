@@ -11,7 +11,7 @@ const SAFETY_BADGE = { good: 'badge-green', fair: 'badge-amber', critical: 'badg
 const EMPTY = {
   name: '', email: '', phone: '', license_number: '', license_expiry: '',
   license_type: 'LMV', experience_years: 0, status: 'available',
-  address: '', emergency_contact: '', assigned_vehicle_id: '',
+  address: '', emergency_contact: '', assigned_vehicle_id: '', photo_url: '',
 }
 
 export default function Drivers() {
@@ -21,7 +21,6 @@ export default function Drivers() {
   const [modal, setModal]       = useState(null)
   const [selected, setSelected] = useState(null)
   const [form, setForm]         = useState(EMPTY)
-  const [photoFile, setPhotoFile]       = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [saving, setSaving]     = useState(false)
   const fileInputRef = useRef(null)
@@ -36,9 +35,13 @@ export default function Drivers() {
   }
   useEffect(() => { load() }, [])
 
-  const resetPhoto = () => { setPhotoFile(null); setPhotoPreview(null) }
+  const openAdd = () => {
+    setForm(EMPTY)
+    setPhotoPreview(null)
+    setSelected(null)
+    setModal('add')
+  }
 
-  const openAdd = () => { setForm(EMPTY); resetPhoto(); setModal('add') }
   const openEdit = (d) => {
     setForm({
       ...d,
@@ -46,47 +49,53 @@ export default function Drivers() {
       email: d.user?.email || '',
       phone: d.user?.phone || '',
       assigned_vehicle_id: d.assigned_vehicle_id || '',
+      photo_url: d.photo_url || '',
     })
     setSelected(d)
-    resetPhoto()
+    setPhotoPreview(d.photo_url || null)
     setModal('edit')
   }
+
   const openDelete = (d) => { setSelected(d); setModal('delete') }
 
   const handlePhotoSelect = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+    if (file.size > 3 * 1024 * 1024) { toast.error('Photo must be under 3MB'); return }
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPhotoPreview(reader.result)
+      setForm(p => ({ ...p, photo_url: reader.result }))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removePhoto = () => {
+    setPhotoPreview(null)
+    setForm(p => ({ ...p, photo_url: '' }))
   }
 
   const handleSave = async () => {
+    if (!form.license_number) { toast.error('License number is required'); return }
+    if (modal === 'add' && !form.name) { toast.error('Driver name is required'); return }
     setSaving(true)
     try {
       const payload = { ...form }
       if (!payload.assigned_vehicle_id) delete payload.assigned_vehicle_id
-      if (!payload.email) delete payload.email
-      if (!payload.phone) delete payload.phone
+      if (!payload.email)               delete payload.email
+      if (!payload.phone)               delete payload.phone
+      if (!payload.photo_url)           delete payload.photo_url
       delete payload.id; delete payload.user; delete payload.assignedVehicle
       delete payload.createdAt; delete payload.updatedAt
       delete payload.safety_score; delete payload.safety_level
       delete payload.safety_breakdown; delete payload.completed_trips
 
-      let driverId = selected?.id
       if (modal === 'add') {
-        const r = await driverAPI.create(payload)
-        driverId = r.data.data?.id
+        await driverAPI.create(payload)
         toast.success('Driver added')
       } else {
         await driverAPI.update(selected.id, payload)
         toast.success('Driver updated')
-      }
-
-      // Upload photo if selected and API supports it
-      if (photoFile && driverId && driverAPI.uploadPhoto) {
-        const fd = new FormData()
-        fd.append('photo', photoFile)
-        await driverAPI.uploadPhoto(driverId, fd).catch(() => {})
       }
 
       setModal(null); load()
@@ -130,9 +139,8 @@ export default function Drivers() {
                   <td><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)', fontSize: '0.82rem', fontWeight: 600 }}>{d.license_number}</span></td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {/* stamp photo or fallback avatar */}
-                      {d.photo_path ? (
-                        <img src={d.photo_path} alt=""
+                      {d.photo_url ? (
+                        <img src={d.photo_url} alt=""
                           style={{ width: 30, height: 30, borderRadius: 'var(--radius)', objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
                       ) : (
                         <div style={{ width: 30, height: 30, borderRadius: 'var(--radius)', background: 'var(--brand-light)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -207,8 +215,8 @@ export default function Drivers() {
                 justifyContent: 'center', background: 'var(--bg-canvas)', overflow: 'hidden', flexShrink: 0,
               }}
             >
-              {(photoPreview || selected?.photo_path) ? (
-                <img src={photoPreview || selected?.photo_path} alt=""
+              {photoPreview ? (
+                <img src={photoPreview} alt=""
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <User size={26} color="var(--text-muted)" />
@@ -216,11 +224,20 @@ export default function Drivers() {
             </div>
             <div>
               <button type="button" className="btn btn-sm btn-secondary" onClick={() => fileInputRef.current?.click()}>
-                <Camera size={13} /> {photoPreview || selected?.photo_path ? 'Change Photo' : 'Upload Driver Photo'}
+                <Camera size={13} /> {photoPreview ? 'Change Photo' : 'Upload Driver Photo'}
               </button>
               <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '5px' }}>
-                Optional · JPG/PNG, up to 5MB
+                Optional · JPG/PNG, up to 3MB
               </div>
+              {photoPreview && (
+                <button
+                  type="button"
+                  onClick={removePhoto}
+                  style={{ fontSize: '0.74rem', color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '5px' }}
+                >
+                  Remove photo
+                </button>
+              )}
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
           </div>
