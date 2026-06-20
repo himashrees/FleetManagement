@@ -1,10 +1,9 @@
-const { Trip, Vehicle, Driver, Route, User, Alert } = require('../models');
+const { Trip, Vehicle, Driver, User, Alert } = require('../models');
 
 const TRIP_INCLUDE = [
   { model: Vehicle, as: 'vehicle', attributes: ['registration_no', 'make'] },
   { model: Driver,  as: 'driver',  attributes: ['id', 'license_number'],
     include: [{ model: User, as: 'user', attributes: ['name'] }] },
-  { model: Route,   as: 'route',   attributes: ['name', 'origin', 'destination'] },
 ];
 
 const notifyDriver = async (trip, title, message) => {
