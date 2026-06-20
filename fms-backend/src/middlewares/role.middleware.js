@@ -14,17 +14,6 @@ const isDriver = (req, res, next) => {
   return res.status(403).json({ success: false, message: 'Driver access required' });
 };
 
-/**
- * Allows Admin/Manager through unconditionally. If the requester is a
- * Driver, restricts the query to only their own data by forcing
- * req.query[scopeField] = the driver's own Driver record id.
- *
- * Usage: router.get('/', isAuthenticated, scopeDriverTo('driver_id'), ctrl.getAll)
- * The controller must already support filtering by that query param.
- *
- * Note: this middleware expects req.session.user.driverId to be present
- * for driver accounts — see attachDriverId below to populate it at login.
- */
 const scopeDriverTo = (queryField) => (req, res, next) => {
   const { role, driverId } = req.session.user || {};
   if (role === 'admin' || role === 'manager') return next();
