@@ -11,6 +11,7 @@ const Alert = sequelize.define('Alert', {
   severity:    { type: DataTypes.ENUM('low','medium','high','critical'), defaultValue: 'medium' },
   is_read:     { type: DataTypes.BOOLEAN, defaultValue: false },
   resolved_at: { type: DataTypes.DATE },
+  voice_note:  { type: DataTypes.TEXT },   // base64 audio — driver's recorded voice
 }, { tableName: 'alerts', timestamps: true });
 
 module.exports = Alert;

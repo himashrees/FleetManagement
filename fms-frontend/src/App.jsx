@@ -18,6 +18,10 @@ import Reports from './pages/Reports'
 import GpsTracking from './pages/GpsTracking'
 import MLInsights from './pages/MLInsights'
 import UserManagement from './pages/UserManagement'
+import MyTrips from './pages/MyTrips'
+import TripHistory from './pages/TripHistory'
+import MyVehicle from './pages/MyVehicle'
+import ReportIssue from './pages/ReportIssue'
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuth()
@@ -43,17 +47,16 @@ export default function App() {
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login"                element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/register"             element={<PublicRoute><Register /></PublicRoute>} />
-            <Route path="/forgot-password"      element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/login"               element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/register"            element={<PublicRoute><Register /></PublicRoute>} />
+            <Route path="/forgot-password"     element={<PublicRoute><ForgotPassword /></PublicRoute>} />
             <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
             <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
               <Route index element={<Dashboard />} />
+              {/* Admin / Manager routes */}
               <Route path="vehicles"    element={<PrivateRoute roles={['admin','manager']}><Vehicles /></PrivateRoute>} />
               <Route path="drivers"     element={<PrivateRoute roles={['admin','manager']}><Drivers /></PrivateRoute>} />
               <Route path="trips"       element={<PrivateRoute roles={['admin','manager']}><Trips /></PrivateRoute>} />
-              <Route path="my-trips"   element={<Trips />} />
-              <Route path="my-vehicle" element={<Vehicles />} />
               <Route path="fuel"        element={<Fuel />} />
               <Route path="maintenance" element={<PrivateRoute roles={['admin','manager']}><Maintenance /></PrivateRoute>} />
               <Route path="documents"   element={<Documents />} />
@@ -62,6 +65,11 @@ export default function App() {
               <Route path="gps"         element={<PrivateRoute roles={['admin','manager']}><GpsTracking /></PrivateRoute>} />
               <Route path="ml"          element={<PrivateRoute roles={['admin','manager']}><MLInsights /></PrivateRoute>} />
               <Route path="users"       element={<PrivateRoute roles={['admin']}><UserManagement /></PrivateRoute>} />
+              {/* Driver-specific routes */}
+              <Route path="my-trips"     element={<PrivateRoute roles={['driver']}><MyTrips /></PrivateRoute>} />
+              <Route path="trip-history" element={<PrivateRoute roles={['driver']}><TripHistory /></PrivateRoute>} />
+              <Route path="my-vehicle"   element={<PrivateRoute roles={['driver']}><MyVehicle /></PrivateRoute>} />
+              <Route path="report-issue" element={<PrivateRoute roles={['driver']}><ReportIssue /></PrivateRoute>} />
             </Route>
           </Routes>
         </BrowserRouter>

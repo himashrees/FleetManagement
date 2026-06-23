@@ -105,6 +105,14 @@ export default function Alerts() {
                     <span className="badge badge-slate">{a.type}</span>
                   </div>
                   {a.message && <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{a.message}</div>}
+                  {a.voice_note && (
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0fdf4', borderRadius: 8,
+                      border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Mic size={13} color='#16a34a' />
+                      <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#15803d' }}>Voice note:</span>
+                      <audio controls src={a.voice_note} style={{ height: 28, flex: 1 }} />
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>
                     {new Date(a.createdAt).toLocaleString('en-IN')}
                     {a.vehicle_id && ` · VEH #${a.vehicle_id}`}

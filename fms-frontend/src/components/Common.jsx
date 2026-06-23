@@ -7,9 +7,9 @@ export function LoadingState({ label = 'Loading data…' }) {
   )
 }
 
-export function EmptyState({ icon = '◌', title = 'Nothing here yet', sub = '' }) {
+export function EmptyState({ icon = '◌', title = 'Nothing here yet', sub = '', compact = false }) {
   return (
-    <div className="empty-state">
+    <div className={`empty-state${compact ? ' compact' : ''}`}>
       <div className="empty-icon">{icon}</div>
       <div className="empty-title">{title}</div>
       {sub && <div className="empty-sub">{sub}</div>}
