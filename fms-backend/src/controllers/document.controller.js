@@ -18,20 +18,28 @@ function extOf(filename) {
   return (filename.split('.').pop() || '').toLowerCase();
 }
 
-// ── Updated prompt — now also extracts document_no and notes ──────────────────
-const EXTRACTION_FIELDS_PROMPT = `You are reading a document (insurance certificate, vehicle registration, permit, license, or similar).
-Extract ONLY these six fields and return valid JSON with exactly these keys:
+// ── Updated prompt — now also extracts doc_type, entity_type, and entity identifiers ──
+const EXTRACTION_FIELDS_PROMPT = `You are reading a document (insurance certificate, vehicle registration, permit, license, or similar) belonging to a fleet management system.
+Extract ONLY these ten fields and return valid JSON with exactly these keys:
 {
   "issued_date":       "YYYY-MM-DD or null",
   "expiry_date":       "YYYY-MM-DD or null",
   "issuing_authority": "name of the organisation that issued this document, or null",
   "title":             "short descriptive title like Vehicle Insurance KA01AB1234, or null",
   "document_no":       "the document/certificate/policy number printed on the document, or null",
-  "notes":             "one short sentence summarising the key details (vehicle number, policy type, insured name), or null"
+  "notes":             "one short sentence summarising the key details (vehicle number, policy type, insured name), or null",
+  "doc_type":          "one of: insurance, registration, permit, license, pollution, other",
+  "entity_type":       "vehicle if the document belongs to a vehicle, driver if it belongs to a person, or null if unclear",
+  "registration_no":   "the vehicle registration / number plate this document refers to (e.g. KA01AB1234), or null if not a vehicle document",
+  "driver_name":       "the full name of the person this document refers to (license holder, insured driver, etc.), or null if not a driver document"
 }
 Rules:
 - All dates MUST be in YYYY-MM-DD format. Convert DD/MM/YYYY or any other format.
 - document_no: look for fields labelled Policy No, Certificate No, Registration No, Permit No, Licence No, Document No, Reference No, or similar.
+- doc_type: classify based on the document's purpose — e.g. an insurance certificate is "insurance", an RC book or registration certificate is "registration", a driving licence is "license", a pollution/emission certificate is "pollution", a permit document is "permit". Use "other" only if none of these fit.
+- entity_type: a driving license or a driver's medical/ID document is "driver". A vehicle's RC, insurance, permit, or pollution certificate is "vehicle".
+- registration_no: normalise to remove extra spaces (e.g. "KA 01 AB 1234" -> "KA01AB1234"). Only fill this if entity_type is "vehicle".
+- driver_name: only fill this if entity_type is "driver".
 - notes: summarise in ONE sentence only — include the most important detail such as vehicle registration number, policyholder name, or covered period.
 - If you cannot find a field, set it to null.
 - Return ONLY the JSON object, no explanation, no markdown fences.`;
@@ -47,6 +55,9 @@ function parseExtractionResult(content) {
       if (!isNaN(dt)) return dt.toISOString().slice(0, 10);
       return null;
     };
+    const VALID_DOC_TYPES = ['insurance', 'registration', 'permit', 'license', 'pollution', 'other'];
+    const docType = (parsed.doc_type || '').toLowerCase().trim();
+    const entityType = (parsed.entity_type || '').toLowerCase().trim();
     return {
       issued_date:       validDate(parsed.issued_date),
       expiry_date:       validDate(parsed.expiry_date),
@@ -54,9 +65,13 @@ function parseExtractionResult(content) {
       title:             parsed.title             || null,
       document_no:       parsed.document_no       || null,
       notes:             parsed.notes             || null,
+      doc_type:          VALID_DOC_TYPES.includes(docType) ? docType : null,
+      entity_type:       ['vehicle', 'driver'].includes(entityType) ? entityType : null,
+      registration_no:   parsed.registration_no ? String(parsed.registration_no).replace(/\s+/g, '').toUpperCase() : null,
+      driver_name:       parsed.driver_name || null,
     };
   } catch {
-    return { issued_date: null, expiry_date: null, issuing_authority: null, title: null, document_no: null, notes: null };
+    return { issued_date: null, expiry_date: null, issuing_authority: null, title: null, document_no: null, notes: null, doc_type: null, entity_type: null, registration_no: null, driver_name: null };
   }
 }
 
@@ -208,6 +223,15 @@ exports.extractDates = async (req, res) => {
   }
 };
 
+// A text-extraction pass is only "successful" if it actually found something —
+// otherwise we should fall through to the vision pipeline instead of giving up.
+function hasUsefulData(data) {
+  return Boolean(
+    data.title || data.expiry_date || data.issued_date || data.document_no ||
+    data.issuing_authority || data.registration_no || data.driver_name
+  );
+}
+
 async function extractFromPdf(res, tmpPath) {
   let pdfText = '';
 
@@ -243,7 +267,11 @@ async function extractFromPdf(res, tmpPath) {
     }
   }
 
-  // Step 3: Groq text model
+  // Step 3: Groq text model — only treat this as done if it actually extracted something.
+  // Scanned/image-based PDFs (e.g. a driving licence with a photo and a thin layer of
+  // boilerplate template text) can clear the length check above without containing any
+  // of the fields we care about, in which case we want to fall through to vision below
+  // instead of returning an all-null result.
   if (pdfText && pdfText.length > 30) {
     try {
       const chat = await groq.chat.completions.create({
@@ -257,7 +285,10 @@ async function extractFromPdf(res, tmpPath) {
         ],
       });
       const data = parseExtractionResult(chat.choices[0]?.message?.content);
-      return res.json({ success: true, data });
+      if (hasUsefulData(data)) {
+        return res.json({ success: true, data });
+      }
+      console.warn('[extract-dates:groq] text pass found no usable fields — falling back to vision');
     } catch (err) {
       console.error('[extract-dates:groq]', err.message);
     }

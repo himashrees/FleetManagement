@@ -57,7 +57,7 @@ export default function TripHistory() {
 
   const filtered = trips.filter(t => {
     const q = search.toLowerCase()
-    const tripId = `TRP-${String(t.id).padStart(9, '0')}`
+    const tripId = `TRP${String(t.id).padStart(3, '0')}`
     const matchQ = !q
       || tripId.toLowerCase().includes(q)
       || (t.start_location || '').toLowerCase().includes(q)
@@ -95,9 +95,7 @@ export default function TripHistory() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
             <div>
               <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)', fontWeight: 700, fontSize: '0.9rem' }}>
-                TRP-{String(t.id).padStart(9, '0')}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#0f172a', marginTop: 4 }}>
+                TRP{String(t.id).padStart(3, '0')}
                 {t.start_location || '—'} → {t.end_location || '—'}
               </div>
             </div>
@@ -259,7 +257,7 @@ export default function TripHistory() {
 
                 <td style={{ padding: '14px 16px' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)', fontWeight: 700, fontSize: '0.8rem' }}>
-                    TRP-{String(t.id).padStart(9, '0')}
+                    TRP{String(t.id).padStart(3, '0')}
                   </span>
                 </td>
 

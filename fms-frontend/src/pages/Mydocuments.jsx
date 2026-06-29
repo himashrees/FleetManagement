@@ -131,11 +131,11 @@ export default function MyDocuments() {
         const allTrips = tripsRes.data.data || []
 
         // 1. Prefer the permanently assigned vehicle on the driver profile
-        // 2. Fall back to the active (in_progress) trip's vehicle
-        // 3. Fall back to the most recent scheduled trip's vehicle
+        // 2. Otherwise, only show vehicle docs once the driver has actually started a trip
+        //    (status === 'in_progress'). A merely "scheduled" trip — or any other trip —
+        //    does not mean the driver is currently using that vehicle, so it must not be
+        //    used to surface that vehicle's documents.
         const activeTrip = allTrips.find(t => t.status === 'in_progress')
-          || allTrips.find(t => t.status === 'scheduled')
-          || allTrips[0]
 
         const vehicleId = p?.assigned_vehicle_id
           || activeTrip?.vehicle_id

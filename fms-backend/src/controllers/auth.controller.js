@@ -132,9 +132,16 @@ exports.forgotPassword = async (req, res) => {
     await user.save();
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
-    await sendPasswordResetEmail(user.email, resetUrl, user.name);
+    const emailResult = await sendPasswordResetEmail(user.email, resetUrl, user.name);
 
-    return res.status(200).json(genericResponse);
+    // In dev/demo mode (no SMTP configured), expose the reset link in the
+    // API response so the frontend can display it as a clickable link.
+    const responsePayload = { ...genericResponse };
+    if (emailResult && emailResult.simulated) {
+      responsePayload.dev_reset_link = resetUrl;
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }

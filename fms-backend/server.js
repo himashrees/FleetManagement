@@ -47,7 +47,7 @@ setupSocket(io);
 const PORT = process.env.PORT || 5000;
 sequelize.sync({ alter: true })
   .then(() => {
-    console.log('✅ PostgreSQL connected & tables synced');
+    console.log('✅ MySQL connected & tables synced');
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
       startAlertScheduler(io);

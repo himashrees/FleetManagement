@@ -34,9 +34,10 @@ export default function Documents() {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [form,       setForm]       = useState(EMPTY)
   const [file,       setFile]       = useState(null)
-  const [saving,     setSaving]     = useState(false)
-  const [extracting, setExtracting] = useState(false)
-  const [extracted,  setExtracted]  = useState(null)
+  const [saving,       setSaving]       = useState(false)
+  const [extracting,   setExtracting]   = useState(false)
+  const [extractStep,  setExtractStep]  = useState(0)   // 0=idle 1=uploading 2=scanning 3=extracting 4=done
+  const [extracted,    setExtracted]    = useState(null)
   const [tabFilter,  setTabFilter]  = useState('all')    // all | vehicle | driver | other
   const [typeFilter, setTypeFilter] = useState('all')
   const [entityFilter, setEntityFilter] = useState('all')
@@ -85,7 +86,7 @@ export default function Documents() {
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
-  const resetForm = () => { setForm(EMPTY); setFile(null); setExtracted(null) }
+  const resetForm = () => { setForm(EMPTY); setFile(null); setExtracted(null); setExtractStep(0) }
 
   const handleSave = async () => {
     if (!form.title.trim()) { toast.error('Title is required'); return }
@@ -110,13 +111,40 @@ export default function Documents() {
   const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
   const runExtraction = async (picked) => {
     setExtracting(true)
+    setExtractStep(1)   // Uploading
     try {
       const fd = new FormData(); fd.append('file', picked)
+      setExtractStep(2)  // Scanning Document
       const res  = await fetch(`${API_BASE}/api/documents/extract-dates`, { method: 'POST', credentials: 'include', body: fd })
+      setExtractStep(3)  // Extracting Details
       const json = await res.json()
       if (json.success && json.data) {
         setExtracted(json.data)
         const d = json.data
+
+        // Map doc_type from AI to our enum values
+        const TYPE_MAP = { insurance: 'insurance', registration: 'registration', permit: 'permit', license: 'license', pollution: 'pollution', other: 'other' }
+        const mappedType = d.doc_type && TYPE_MAP[d.doc_type.toLowerCase()] ? TYPE_MAP[d.doc_type.toLowerCase()] : null
+
+        // Map entity_type
+        const mappedEntity = d.entity_type === 'driver' ? 'driver' : d.entity_type === 'vehicle' ? 'vehicle' : null
+
+        // Match registration_no to a vehicle id
+        let matchedVehicleId = ''
+        if (d.registration_no) {
+          const norm = d.registration_no.replace(/\s/g, '').toUpperCase()
+          const match = vehicles.find(v => v.registration_no.replace(/\s/g, '').toUpperCase() === norm)
+          if (match) matchedVehicleId = String(match.id)
+        }
+
+        // Match driver_name to a driver id
+        let matchedDriverId = ''
+        if (d.driver_name) {
+          const norm = d.driver_name.toLowerCase().trim()
+          const match = drivers.find(dr => (dr.user?.name || '').toLowerCase().includes(norm) || norm.includes((dr.user?.name || '').toLowerCase()))
+          if (match) matchedDriverId = String(match.id)
+        }
+
         setForm(prev => ({
           ...prev,
           ...(d.issued_date       ? { issued_date: d.issued_date }             : {}),
@@ -125,20 +153,30 @@ export default function Documents() {
           ...(d.title             ? { title: d.title }                         : {}),
           ...(d.document_no      ? { document_no: d.document_no }             : {}),
           ...(d.notes            ? { notes: d.notes }                         : {}),
+          ...(mappedType         ? { type: mappedType }                        : {}),
+          ...(mappedEntity       ? { entity_type: mappedEntity }               : {}),
+          ...(matchedVehicleId   ? { vehicle_id: matchedVehicleId, driver_id: '' } : {}),
+          ...(matchedDriverId && mappedEntity === 'driver' ? { driver_id: matchedDriverId, vehicle_id: '' } : {}),
         }))
+
+        setExtractStep(4)  // Fields Auto-filled
         const filled = [
-          d.issued_date       && 'Issue Date',
-          d.expiry_date       && 'Expiry Date',
-          d.issuing_authority && 'Issuing Authority',
-          d.title             && 'Title',
-          d.document_no       && 'Document No.',
-          d.notes             && 'Notes',
+          mappedType                               && 'Document Type',
+          mappedEntity                             && 'Entity Type',
+          (matchedVehicleId || matchedDriverId)    && 'Entity',
+          d.issued_date                            && 'Issue Date',
+          d.expiry_date                            && 'Expiry Date',
+          d.issuing_authority                      && 'Issuing Authority',
+          d.title                                  && 'Title',
+          d.document_no                            && 'Document No.',
+          d.notes                                  && 'Notes',
         ].filter(Boolean)
         toast.success('AI extracted: ' + filled.join(', '))
       } else if (json.message) {
+        setExtractStep(0)
         toast.error(json.message)
       }
-    } catch {} finally { setExtracting(false) }
+    } catch { setExtractStep(0) } finally { setExtracting(false) }
   }
 
   const handleFileChange = (e) => {
@@ -442,21 +480,82 @@ export default function Documents() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               style={{
-                border: `2px dashed ${dragOver ? '#3b82f6' : '#d1d5db'}`, borderRadius: 10, padding: '28px 16px',
-                textAlign: 'center', background: dragOver ? '#eff6ff' : '#f9fafb', transition: 'all .12s',
+                border: `2px dashed ${dragOver ? '#3b82f6' : extractStep === 4 ? '#10b981' : '#d1d5db'}`,
+                borderRadius: 10, padding: '22px 16px',
+                textAlign: 'center',
+                background: dragOver ? '#eff6ff' : extractStep === 4 ? '#f0fdf4' : '#f9fafb',
+                transition: 'all .2s',
               }}>
-              <Upload size={26} color={dragOver ? '#3b82f6' : '#9ca3af'} style={{ marginBottom: 10 }} />
+              <Upload size={26} color={dragOver ? '#3b82f6' : extractStep === 4 ? '#10b981' : '#9ca3af'} style={{ marginBottom: 10 }} />
               <p style={{ fontSize: '0.85rem', color: '#374151', margin: '0 0 4px', fontWeight: 600 }}>Drag &amp; drop files here</p>
               <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: '0 0 4px' }}>or</p>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 7, background: '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', margin: '6px 0 10px' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 7, background: '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: extracting ? 'not-allowed' : 'pointer', margin: '6px 0 10px', opacity: extracting ? 0.6 : 1 }}>
                 + Choose Files
-                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" onChange={handleFileChange} style={{ display: 'none' }} />
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" onChange={handleFileChange} disabled={extracting} style={{ display: 'none' }} />
               </label>
               <p style={{ fontSize: '0.72rem', color: '#9ca3af', margin: 0 }}>PNG, JPG, PDF up to 10MB</p>
-              {extracting && <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#f59e0b', fontWeight: 600 }}>⏳ Scanning document…</div>}
-              {!extracting && extracted && <div style={{ marginTop: 10, fontSize: '0.78rem', color: '#16a34a', fontWeight: 600 }}>✓ Details extracted automatically</div>}
-              {file && !extracting && <div style={{ marginTop: 6, fontSize: '0.76rem', color: '#6b7280', wordBreak: 'break-word' }}>{file.name}</div>}
+              {file && <div style={{ marginTop: 6, fontSize: '0.73rem', color: '#6b7280', wordBreak: 'break-word', fontStyle: 'italic' }}>{file.name}</div>}
             </div>
+
+            {/* Staged Progress Stepper */}
+            {extractStep > 0 && (
+              <div style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {extractStep < 4 ? 'AI Processing…' : 'Extraction Complete'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: 'Uploading',          icon: '' },
+                    { label: 'Scanning Document',  icon: '' },
+                    { label: 'Extracting Details', icon: '' },
+                    { label: 'Fields Auto-filled', icon: '' },
+                  ].map((step, idx) => {
+                    const stepNum  = idx + 1
+                    const isDone   = extractStep > stepNum
+                    const isActive = extractStep === stepNum
+                    return (
+                      <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.7rem', fontWeight: 800,
+                          background: isDone ? '#10b981' : isActive ? '#3b82f6' : '#f3f4f6',
+                          color: extractStep < stepNum ? '#9ca3af' : '#fff',
+                          boxShadow: isActive ? '0 0 0 3px #bfdbfe' : 'none',
+                          transition: 'all 0.3s',
+                        }}>
+                          {isDone ? '✓' : isActive ? (
+                            <span style={{ display: 'inline-block', animation: 'spin 0.8s linear infinite', fontSize: '0.65rem' }}>⟳</span>
+                          ) : stepNum}
+                        </div>
+                        <span style={{
+                          fontSize: '0.82rem',
+                          fontWeight: isActive ? 700 : isDone ? 600 : 400,
+                          color: isDone ? '#10b981' : isActive ? '#1d4ed8' : '#9ca3af',
+                          transition: 'all 0.3s',
+                        }}>
+                          {step.label}
+                        </span>
+                        {isActive && (
+                          <span style={{ marginLeft: 'auto', width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', animation: 'pulse 1s ease-in-out infinite' }} />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {extractStep === 4 && (
+                  <div style={{ marginTop: 10, padding: '8px 10px', background: '#f0fdf4', borderRadius: 7, fontSize: '0.78rem', color: '#15803d', fontWeight: 600, border: '1px solid #bbf7d0' }}>
+                    Review the auto-filled fields below and click <strong>Upload Document</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CSS animations inline */}
+            <style>{`
+              @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+              @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+            `}</style>
           </div>
 
           {/* Document Details */}
@@ -464,56 +563,79 @@ export default function Documents() {
             <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827', marginBottom: 12 }}>Document Details</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Document Type *</label>
-                <select value={form.type} onChange={f('type')} style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Document Type * {extracted?.doc_type && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
+                <select value={form.type} onChange={f('type')} style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.doc_type ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.doc_type ? '#f0fdf4' : '#fff' }}>
                   {Object.entries(TYPE_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Entity Type *</label>
-                <select value={form.entity_type} onChange={f('entity_type')} style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Entity Type * {extracted?.entity_type && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
+                <select value={form.entity_type} onChange={f('entity_type')} style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.entity_type ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.entity_type ? '#f0fdf4' : '#fff' }}>
                   <option value="vehicle">Vehicle</option>
                   <option value="driver">Driver</option>
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Entity Name / Number *</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Entity Name / Number * {((extracted?.registration_no && form.vehicle_id) || (extracted?.driver_name && form.driver_id)) && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 {form.entity_type === 'vehicle' ? (
-                  <select value={form.vehicle_id} onChange={f('vehicle_id')} style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }}>
+                  <select value={form.vehicle_id} onChange={f('vehicle_id')} style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.registration_no && form.vehicle_id ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.registration_no && form.vehicle_id ? '#f0fdf4' : '#fff' }}>
                     <option value="">Select Vehicle</option>
                     {vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_no} — {v.make}</option>)}
                   </select>
                 ) : (
-                  <select value={form.driver_id} onChange={f('driver_id')} style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }}>
+                  <select value={form.driver_id} onChange={f('driver_id')} style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.driver_name && form.driver_id ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.driver_name && form.driver_id ? '#f0fdf4' : '#fff' }}>
                     <option value="">Select Driver</option>
                     {drivers.map(d => <option key={d.id} value={d.id}>{d.user?.name || `Driver #${d.id}`}</option>)}
                   </select>
                 )}
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Expiry Date * {extracted?.expiry_date && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✦ auto-filled</span>}</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Expiry Date * {extracted?.expiry_date && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 <input type="date" value={form.expiry_date} onChange={f('expiry_date')}
-                  style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none', ...(extracted?.expiry_date === form.expiry_date && form.expiry_date ? { borderColor: '#10b981', background: '#f0fdf4' } : {}) }} />
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.expiry_date && form.expiry_date ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.expiry_date && form.expiry_date ? '#f0fdf4' : '#fff' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Issue Date {extracted?.issued_date && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✦ auto-filled</span>}</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Issue Date {extracted?.issued_date && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 <input type="date" value={form.issued_date} onChange={f('issued_date')}
-                  style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }} />
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.issued_date && form.issued_date ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.issued_date && form.issued_date ? '#f0fdf4' : '#fff' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Document Title * {extracted?.title && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✦ auto-filled</span>}</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Document Title * {extracted?.title && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 <input value={form.title} onChange={f('title')} placeholder="e.g. Insurance Certificate"
-                  style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none' }} />
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.title && form.title ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.title && form.title ? '#f0fdf4' : '#fff' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Document No. {extracted?.document_no && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✦ auto-filled</span>}</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Document No. {extracted?.document_no && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 <input value={form.document_no} onChange={f('document_no')} placeholder="e.g. INS/2026/123456"
-                  style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none', ...(extracted?.document_no && form.document_no === extracted.document_no ? { borderColor: '#10b981', background: '#f0fdf4' } : {}) }} />
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.document_no && form.document_no ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.document_no && form.document_no ? '#f0fdf4' : '#fff' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Issuing Authority {extracted?.issuing_authority && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
+                <input value={form.issuing_authority} onChange={f('issuing_authority')} placeholder="e.g. IRDAI / RTO Mysore"
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.issuing_authority && form.issuing_authority ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.issuing_authority && form.issuing_authority ? '#f0fdf4' : '#fff' }} />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Description / Notes {extracted?.notes && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✦ auto-filled</span>}</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                  Description / Notes {extracted?.notes && <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 400 }}>+ auto-filled</span>}
+                </label>
                 <input value={form.notes} onChange={f('notes')} placeholder="Enter description (optional)"
-                  style={{ width: '100%', padding: '9px 10px', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: '0.84rem', outline: 'none', ...(extracted?.notes && form.notes === extracted.notes ? { borderColor: '#10b981', background: '#f0fdf4' } : {}) }} />
+                  style={{ width: '100%', padding: '9px 10px', border: `1px solid ${extracted?.notes && form.notes ? '#10b981' : '#e5e7eb'}`, borderRadius: 7, fontSize: '0.84rem', outline: 'none', background: extracted?.notes && form.notes ? '#f0fdf4' : '#fff' }} />
               </div>
             </div>
 
@@ -525,7 +647,7 @@ export default function Documents() {
                 padding: '9px 20px', borderRadius: 8, border: 'none', background: (saving || extracting) ? '#93c5fd' : '#3b82f6',
                 color: '#fff', fontWeight: 700, fontSize: '0.84rem', cursor: (saving || extracting) ? 'not-allowed' : 'pointer',
               }}>
-                {saving ? 'Uploading…' : 'Upload Document'}
+                {saving ? 'Uploading…' : extracting ? 'Scanning…' : '⬆ Upload Document'}
               </button>
             </div>
           </div>
