@@ -152,6 +152,37 @@ exports.getStats = async (req, res) => {
   }
 };
 
+exports.update = async (req, res) => {
+  try {
+    const log = await FuelLog.findByPk(req.params.id);
+    if (!log) return res.status(404).json({ success: false, message: 'Fuel log not found' });
+
+    const { vehicle_id, driver_id, litres, cost_per_litre, fuel_type, odometer_km, station_name, filled_at } = req.body;
+
+    const nextLitres = litres !== undefined ? parseFloat(litres) : parseFloat(log.litres);
+    const nextRate   = cost_per_litre !== undefined ? parseFloat(cost_per_litre) : parseFloat(log.cost_per_litre);
+
+    if (!nextLitres || nextLitres <= 0) return res.status(400).json({ success: false, message: 'litres must be > 0' });
+    if (!nextRate || nextRate <= 0)     return res.status(400).json({ success: false, message: 'cost_per_litre must be > 0' });
+
+    await log.update({
+      vehicle_id:     vehicle_id !== undefined ? parseInt(vehicle_id) : log.vehicle_id,
+      driver_id:      driver_id !== undefined ? (driver_id ? parseInt(driver_id) : null) : log.driver_id,
+      litres:         nextLitres,
+      cost_per_litre: nextRate,
+      total_cost:     (nextLitres * nextRate).toFixed(2),
+      fuel_type:      fuel_type || log.fuel_type,
+      odometer_km:    odometer_km !== undefined ? (odometer_km ? parseFloat(odometer_km) : null) : log.odometer_km,
+      station_name:   station_name !== undefined ? (station_name || null) : log.station_name,
+      filled_at:      filled_at || log.filled_at,
+    });
+
+    return res.json({ success: true, data: log });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
     const log = await FuelLog.findByPk(req.params.id);

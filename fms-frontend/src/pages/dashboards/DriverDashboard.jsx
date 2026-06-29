@@ -3,18 +3,17 @@ import { Link } from 'react-router-dom'
 import {
   Truck, Play, CheckCircle2, MapPin, Calendar, Bell,
   Navigation, FileText, AlertTriangle, Activity, Route,
-  ChevronRight, Wrench, Car, ShieldAlert, FileWarning, Zap
+  Wrench, Car, ShieldAlert, FileWarning, Zap, Clock,
+  ArrowRight, TrendingUp
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { driverAPI, tripAPI, alertAPI, documentAPI } from '../../services/api'
 import { LoadingState } from '../../components/Common'
 
-// ── Leaflet map: draws a dashed route line between two text locations ──
 function RouteMap({ from, to }) {
   useEffect(() => {
     if (!from || !to) return
     const mapId = 'driver-route-map'
-
     const init = () => {
       const L = window.L
       const container = document.getElementById(mapId)
@@ -35,57 +34,42 @@ function RouteMap({ from, to }) {
         map.fitBounds(line.getBounds(), { padding: [28, 28] })
       })
     }
-
     if (window.L) { init(); return }
     if (!document.querySelector('link[href*="leaflet"]')) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
+      const link = document.createElement('link'); link.rel = 'stylesheet'
       link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
       document.head.appendChild(link)
     }
     if (!document.querySelector('script[src*="leaflet"]')) {
       const s = document.createElement('script')
       s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-      s.onload = init
-      document.head.appendChild(s)
+      s.onload = init; document.head.appendChild(s)
     } else {
       const check = setInterval(() => { if (window.L) { clearInterval(check); init() } }, 100)
     }
   }, [from, to])
-
-  return <div id="driver-route-map" style={{ height: '170px', borderRadius: '10px', overflow: 'hidden', background: '#f1f5f9' }} />
+  return <div id="driver-route-map" style={{ height: '160px', borderRadius: '8px', overflow: 'hidden', background: '#f1f5f9' }} />
 }
 
-// ── Expiry status badge ──
 function ExpiryBadge({ expiryDate }) {
-  if (!expiryDate) return <span style={badge('#f1f5f9','#64748b')}>Not uploaded</span>
+  if (!expiryDate) return <span style={{ fontSize: '0.72rem', fontWeight: 600, background: '#f1f5f9', color: '#64748b', padding: '3px 10px', borderRadius: 999 }}>Not uploaded</span>
   const days = Math.floor((new Date(expiryDate) - new Date()) / 86400000)
-  if (days < 0)   return <span style={badge('#fee2e2','#dc2626')}>Expired</span>
-  if (days <= 15) return <span style={badge('#fef3c7','#d97706')}>Expires in {days}d</span>
-  if (days <= 30) return <span style={badge('#fef3c7','#d97706')}>Expires in {days}d</span>
-  return <span style={badge('#dcfce7','#16a34a')}>✓ Valid</span>
-}
-function badge(bg, color) {
-  return { fontSize: '0.72rem', fontWeight: 600, background: bg, color, padding: '3px 10px', borderRadius: '999px' }
+  if (days < 0)   return <span style={{ fontSize: '0.72rem', fontWeight: 600, background: '#fee2e2', color: '#dc2626', padding: '3px 10px', borderRadius: 999 }}>Expired</span>
+  if (days <= 30) return <span style={{ fontSize: '0.72rem', fontWeight: 600, background: '#fef3c7', color: '#d97706', padding: '3px 10px', borderRadius: 999 }}>Expires in {days}d</span>
+  return <span style={{ fontSize: '0.72rem', fontWeight: 600, background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 999 }}>Valid</span>
 }
 
-const CARD = {
-  background: 'var(--bg-surface)', border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-lg)', padding: '18px', boxShadow: '0 1px 4px rgba(0,0,0,.05)',
-}
-const STITLE = {
-  fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)',
-  marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '7px',
-}
+const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }
+const sectionTitle = { fontSize: '0.9rem', fontWeight: 700, color: '#111827', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }
 
 export default function DriverDashboard() {
   const { user } = useAuth()
-  const [profile,   setProfile]   = useState(null)
-  const [trips,     setTrips]     = useState([])
-  const [alerts,    setAlerts]    = useState([])
+  const [profile, setProfile]     = useState(null)
+  const [trips, setTrips]         = useState([])
+  const [alerts, setAlerts]       = useState([])
   const [driverDocs, setDriverDocs] = useState([])
   const [vehicleDocs, setVehicleDocs] = useState([])
-  const [loading,   setLoading]   = useState(true)
+  const [loading, setLoading]     = useState(true)
 
   useEffect(() => {
     if (!user?.driverId) { setLoading(false); return }
@@ -101,7 +85,6 @@ export default function DriverDashboard() {
         setTrips(t.data.data || [])
         setAlerts((a.data.data || []).slice(0, 4))
         setDriverDocs(dd.data.data || [])
-        // fetch vehicle docs if driver has assigned vehicle
         if (prof?.assigned_vehicle_id) {
           documentAPI.getAll({ vehicle_id: prof.assigned_vehicle_id })
             .then(vd => setVehicleDocs(vd.data.data || []))
@@ -117,187 +100,202 @@ export default function DriverDashboard() {
   if (!user?.driverId) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#6b7280' }}>
-        <FileWarning size={36} style={{ marginBottom: '12px', color: '#d97706' }} />
-        <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '6px' }}>No driver profile linked</div>
+        <FileWarning size={36} style={{ marginBottom: 12, color: '#d97706' }} />
+        <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: 6 }}>No driver profile linked</div>
         <div style={{ fontSize: '0.85rem' }}>Contact your fleet manager to get set up.</div>
       </div>
     )
   }
 
-  const today         = new Date().toDateString()
-  const activeTrip    = trips.find(t => t.status === 'in_progress')
-  const upcomingTrip  = !activeTrip ? trips.find(t => t.status === 'planned') : null
-  const currentTrip   = activeTrip || upcomingTrip
-  const todayTrips    = trips.filter(t => t.trip_date && new Date(t.trip_date).toDateString() === today)
+  const today          = new Date().toDateString()
+  const activeTrip     = trips.find(t => t.status === 'in_progress')
+  const upcomingTrip   = !activeTrip ? trips.find(t => t.status === 'planned') : null
+  const currentTrip    = activeTrip || upcomingTrip
+  const todayTrips     = trips.filter(t => t.trip_date && new Date(t.trip_date).toDateString() === today)
   const completedToday = todayTrips.filter(t => t.status === 'completed').length
   const distanceToday  = todayTrips.filter(t => t.status === 'completed').reduce((s, t) => s + (parseFloat(t.distance_km) || 0), 0)
-  const recentTrips   = trips.filter(t => t.status === 'completed').slice(0, 3)
-  const vehicle       = profile?.assignedVehicle
+  const recentTrips    = trips.filter(t => t.status === 'completed').slice(0, 4)
+  const vehicle        = profile?.assignedVehicle
 
-  const findDoc  = (arr, ...types) => arr.find(d => types.some(tp => d.type?.toLowerCase().includes(tp)))
+  const findDoc     = (arr, ...types) => arr.find(d => types.some(tp => d.type?.toLowerCase().includes(tp)))
   const licenseDoc  = findDoc(driverDocs, 'license', 'licence')
-  const aadhaarDoc  = findDoc(driverDocs, 'aadhaar', 'aadhar')
-  const medicalDoc  = findDoc(driverDocs, 'medical')
-  const rcDoc        = findDoc(vehicleDocs, 'rc', 'registration')
+  const rcDoc       = findDoc(vehicleDocs, 'rc', 'registration')
   const insuranceDoc = findDoc(vehicleDocs, 'insurance')
 
-  const REPORT_ISSUES = [
-    { icon: <Zap size={16} />,         label: 'Tyre Puncture' },
-    { icon: <Wrench size={16} />,      label: 'Engine Issue' },
-    { icon: <ShieldAlert size={16} />, label: 'Brake Failure' },
-    { icon: <Car size={16} />,         label: 'Accident' },
-    { icon: <AlertTriangle size={16} />, label: 'Other Issue' },
+  const statCards = [
+    { icon: Calendar,    color: '#3b82f6', bg: '#eff6ff', label: "Today's Trips",   value: todayTrips.length,                sub: 'Total assigned' },
+    { icon: Play,        color: '#10b981', bg: '#f0fdf4', label: 'Active Trip',     value: activeTrip ? 1 : 0,              sub: activeTrip ? 'In Progress' : 'None active' },
+    { icon: CheckCircle2,color: '#8b5cf6', bg: '#f5f3ff', label: 'Completed',       value: completedToday,                  sub: 'Today' },
+    { icon: Navigation,  color: '#f59e0b', bg: '#fffbeb', label: 'Distance Today',  value: `${distanceToday.toFixed(0)} km`, sub: 'Total travelled' },
+    { icon: TrendingUp,  color: '#10b981', bg: '#f0fdf4', label: 'Safety Score',    value: profile?.safety_score ?? '—',   sub: profile?.safety_level || 'Not calculated' },
   ]
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="page">
 
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#111827' }}>
             Welcome back, {user?.name?.split(' ')[0] || 'Driver'}! 👋
           </h1>
-          <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '4px' }}>
+          <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: 4, marginBottom: 0 }}>
             Here's what's happening with your trips today.
-          </div>
+          </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#6b7280', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 14px' }}>
-          <Calendar size={14} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#374151', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 14px' }}>
+          <Calendar size={14} color="#6b7280" />
           {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
         </div>
       </div>
 
-      {/* ── Stat Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '14px', marginBottom: '20px' }}>
-        {[
-          { icon: <Calendar size={22} />,     color: '#1d4ed8', bg: '#dbeafe', label: "Today's Trips",   value: todayTrips.length,                sub: 'Total assigned' },
-          { icon: <Play size={22} />,          color: '#16a34a', bg: '#dcfce7', label: 'Active Trip',    value: activeTrip ? 1 : 0,              sub: activeTrip ? 'In Progress' : 'None active' },
-          { icon: <CheckCircle2 size={22} />,  color: '#7c3aed', bg: '#ede9fe', label: 'Completed Trips', value: completedToday,                   sub: 'Today' },
-          { icon: <Navigation size={22} />,    color: '#d97706', bg: '#fef3c7', label: 'Distance Today',  value: `${distanceToday.toFixed(0)} km`, sub: 'Total travelled' },
-          { icon: <Activity size={22} />,      color: '#16a34a', bg: '#dcfce7', label: 'Safety Score',   value: profile?.safety_score ?? '—',    sub: profile?.safety_level || 'Not calculated' },
-        ].map((s, i) => (
-          <div key={i} style={{ ...CARD, display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color, flexShrink: 0 }}>
-              {s.icon}
+      {/* Stat Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 20 }}>
+        {statCards.map((s, i) => (
+          <div key={i} style={{ ...card, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <s.icon size={20} color={s.color} />
             </div>
             <div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>{s.value}</div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '2px' }}>{s.label}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827', lineHeight: 1.1 }}>{s.value}</div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginTop: 2 }}>{s.label}</div>
               <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* ── Current Trip + Assigned Vehicle ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '16px', marginBottom: '16px' }}>
+      {/* Current Trip + Vehicle */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
 
-        <div style={CARD}>
-          <div style={{ ...STITLE, justifyContent: 'space-between' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}><Route size={15} color="#1d4ed8" /> Current Trip</span>
+        {/* Current Trip */}
+        <div style={card}>
+          <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Route size={14} color="#3b82f6" />
+              </div>
+              Current Trip
+            </span>
             {currentTrip && (
-              <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: '999px',
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 999,
                 background: activeTrip ? '#dbeafe' : '#fef3c7',
-                color:      activeTrip ? '#1d4ed8' : '#d97706' }}>
-                {activeTrip ? 'In Progress' : 'Planned'}
+                color: activeTrip ? '#1d4ed8' : '#d97706' }}>
+                {activeTrip ? '● In Progress' : '○ Planned'}
               </span>
             )}
           </div>
 
           {currentTrip ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  ['Trip ID',   `TR${String(currentTrip.id).padStart(3,'0')}`],
-                  ['Vehicle',   currentTrip.vehicle?.registration_no || '—'],
-                  ['From',      currentTrip.start_location || '—'],
-                  ['To',        currentTrip.end_location   || '—'],
-                  ['Start',     currentTrip.start_time || (currentTrip.actual_start_time ? new Date(currentTrip.actual_start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—')],
+                  ['Trip ID', `TR${String(currentTrip.id).padStart(3,'0')}`],
+                  ['Vehicle', currentTrip.vehicle?.registration_no || '—'],
+                  ['From',    currentTrip.start_location || '—'],
+                  ['To',      currentTrip.end_location   || '—'],
+                  ['Start',   currentTrip.start_time || '—'],
                 ].map(([l, v]) => (
-                  <div key={l} style={{ display: 'flex', gap: '8px', fontSize: '0.83rem' }}>
-                    <span style={{ color: '#9ca3af', minWidth: '60px', flexShrink: 0 }}>{l}</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v}</span>
+                  <div key={l} style={{ display: 'flex', gap: 8, fontSize: '0.83rem', alignItems: 'flex-start' }}>
+                    <span style={{ color: '#9ca3af', minWidth: 58, flexShrink: 0, paddingTop: 1 }}>{l}</span>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>{v}</span>
                   </div>
                 ))}
-                <Link to="/trips" style={{ marginTop: '6px', background: activeTrip ? '#dc2626' : '#1d4ed8', color: '#fff', borderRadius: '8px', padding: '9px 16px', fontWeight: 600, fontSize: '0.85rem', textDecoration: 'none', textAlign: 'center', display: 'block' }}>
+                <Link to="/trips" style={{
+                  marginTop: 6, textAlign: 'center', display: 'block', textDecoration: 'none',
+                  padding: '9px 16px', borderRadius: 8, fontWeight: 700, fontSize: '0.85rem', color: '#fff',
+                  background: activeTrip ? '#dc2626' : '#3b82f6',
+                }}>
                   {activeTrip ? 'Complete Trip' : 'Start Trip'}
                 </Link>
               </div>
               <RouteMap from={currentTrip.start_location} to={currentTrip.end_location} />
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '30px 20px', color: '#9ca3af' }}>
-              <Route size={32} style={{ opacity: 0.25, marginBottom: '10px' }} />
-              <div style={{ fontWeight: 600, marginBottom: '4px' }}>No active trip</div>
+            <div style={{ textAlign: 'center', padding: '36px 20px', color: '#9ca3af' }}>
+              <div style={{ width: 56, height: 56, borderRadius: 12, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <Route size={24} color="#d1d5db" />
+              </div>
+              <div style={{ fontWeight: 600, color: '#374151', marginBottom: 4 }}>No active trip</div>
               <div style={{ fontSize: '0.82rem' }}>Your fleet manager hasn't scheduled a trip yet</div>
             </div>
           )}
         </div>
 
-        <div style={CARD}>
-          <div style={STITLE}><Truck size={15} color="#1d4ed8" /> Assigned Vehicle</div>
+        {/* Assigned Vehicle */}
+        <div style={card}>
+          <div style={sectionTitle}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Truck size={14} color="#3b82f6" />
+            </div>
+            Assigned Vehicle
+          </div>
           {vehicle ? (
             <>
-              <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '16px', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80px' }}>
+              <div style={{ background: '#f8fafc', borderRadius: 10, padding: 16, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 70 }}>
                 <div style={{ textAlign: 'center' }}>
-                  <Truck size={38} color="#94a3b8" />
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px', fontWeight: 600 }}>{vehicle.make} {vehicle.model}</div>
+                  <Truck size={32} color="#94a3b8" />
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 6, fontWeight: 600 }}>{vehicle.make} {vehicle.model}</div>
                 </div>
               </div>
               {[
-                ['Registration No.', vehicle.registration_no],
-                ['Model',            `${vehicle.make || ''} ${vehicle.model || ''}`],
-                ['Fuel Type',        vehicle.fuel_type],
-                ['Odometer',         vehicle.odometer_km ? `${Number(vehicle.odometer_km).toLocaleString()} km` : '—'],
+                ['Registration', vehicle.registration_no],
+                ['Fuel Type',   vehicle.fuel_type],
+                ['Odometer',    vehicle.odometer_km ? `${Number(vehicle.odometer_km).toLocaleString()} km` : '—'],
               ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.83rem' }}>
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f3f4f6', fontSize: '0.83rem' }}>
                   <span style={{ color: '#9ca3af' }}>{l}</span>
-                  <span style={{ fontWeight: 600 }}>{v || '—'}</span>
+                  <span style={{ fontWeight: 600, color: '#111827' }}>{v || '—'}</span>
                 </div>
               ))}
             </>
           ) : (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af' }}>
-              <Truck size={32} style={{ opacity: 0.25, marginBottom: '10px' }} />
-              <div style={{ fontWeight: 600 }}>No vehicle assigned</div>
+              <div style={{ width: 56, height: 56, borderRadius: 12, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                <Truck size={24} color="#d1d5db" />
+              </div>
+              <div style={{ fontWeight: 600, color: '#374151' }}>No vehicle assigned</div>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Today's Assigned Trips ── */}
-      <div style={{ ...CARD, marginBottom: '16px' }}>
-        <div style={STITLE}><Calendar size={15} color="#1d4ed8" /> Today's Assigned Trips</div>
+      {/* Today's Assigned Trips */}
+      <div style={{ ...card, marginBottom: 16 }}>
+        <div style={sectionTitle}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Calendar size={14} color="#3b82f6" />
+          </div>
+          Today's Assigned Trips
+        </div>
         {todayTrips.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', fontSize: '0.85rem' }}>No trips scheduled for today</div>
+          <div style={{ textAlign: 'center', padding: '28px', color: '#9ca3af', fontSize: '0.85rem' }}>No trips scheduled for today</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                {['Trip ID','From','To','Vehicle','Time','Status','Action'].map(h => (
-                  <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+              <tr style={{ background: '#f9fafb', borderRadius: 8 }}>
+                {['Trip ID','From','To','Vehicle','Status','Action'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {todayTrips.map(t => (
-                <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#1d4ed8', fontWeight: 600 }}>TR{String(t.id).padStart(3,'0')}</td>
-                  <td style={{ padding: '10px 12px' }}>{t.start_location || '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>{t.end_location   || '—'}</td>
-                  <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{t.vehicle?.registration_no || '—'}</td>
-                  <td style={{ padding: '10px 12px', color: '#64748b' }}>{t.start_time || '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: '999px', fontWeight: 600,
-                      background: t.status === 'in_progress' ? '#dbeafe' : t.status === 'completed' ? '#dcfce7' : '#f1f5f9',
-                      color:      t.status === 'in_progress' ? '#1d4ed8' : t.status === 'completed' ? '#16a34a' : '#64748b',
+                <tr key={t.id} style={{ borderBottom: '1px solid #f9fafb' }}>
+                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', color: '#3b82f6', fontWeight: 700 }}>TR{String(t.id).padStart(3,'0')}</td>
+                  <td style={{ padding: '11px 14px', color: '#374151' }}>{t.start_location || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#374151' }}>{t.end_location || '—'}</td>
+                  <td style={{ padding: '11px 14px', fontFamily: 'monospace', color: '#6b7280' }}>{t.vehicle?.registration_no || '—'}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    <span style={{ fontSize: '0.72rem', padding: '4px 10px', borderRadius: 999, fontWeight: 700,
+                      background: t.status === 'in_progress' ? '#dbeafe' : t.status === 'completed' ? '#dcfce7' : '#f3f4f6',
+                      color: t.status === 'in_progress' ? '#1d4ed8' : t.status === 'completed' ? '#16a34a' : '#6b7280',
                     }}>{t.status === 'in_progress' ? 'In Progress' : t.status === 'completed' ? 'Completed' : 'Planned'}</span>
                   </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <Link to="/trips" style={{ fontSize: '0.78rem', padding: '5px 14px', borderRadius: '6px', fontWeight: 600, textDecoration: 'none',
-                      background: t.status === 'planned' ? '#16a34a' : t.status === 'in_progress' ? '#1d4ed8' : '#f1f5f9',
-                      color: t.status === 'completed' ? '#64748b' : '#fff',
+                  <td style={{ padding: '11px 14px' }}>
+                    <Link to="/trips" style={{ fontSize: '0.78rem', padding: '5px 14px', borderRadius: 6, fontWeight: 700, textDecoration: 'none',
+                      background: t.status === 'planned' ? '#16a34a' : t.status === 'in_progress' ? '#3b82f6' : '#f3f4f6',
+                      color: t.status === 'completed' ? '#6b7280' : '#fff',
                     }}>
                       {t.status === 'planned' ? 'Start' : t.status === 'in_progress' ? 'View' : 'Done'}
                     </Link>
@@ -309,74 +307,91 @@ export default function DriverDashboard() {
         )}
       </div>
 
-      {/* ── Recent Trips + Notifications + Vehicle Documents ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+      {/* Bottom row: Recent Trips | Notifications | Documents */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
 
         {/* Recent Trips */}
-        <div style={CARD}>
-          <div style={{ ...STITLE, justifyContent: 'space-between' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}><Activity size={15} color="#1d4ed8" /> Recent Trips</span>
-            <Link to="/trips" style={{ fontSize: '0.75rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>View All</Link>
+        <div style={card}>
+          <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Activity size={14} color="#3b82f6" />
+              </div>
+              Recent Trips
+            </span>
+            <Link to="/trip-history" style={{ fontSize: '0.75rem', color: '#3b82f6', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+              View All <ArrowRight size={12} />
+            </Link>
           </div>
           {recentTrips.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', fontSize: '0.82rem' }}>No completed trips yet</div>
+            <div style={{ textAlign: 'center', padding: '28px', color: '#9ca3af', fontSize: '0.82rem' }}>No completed trips yet</div>
           ) : recentTrips.map(t => (
-            <div key={t.id} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#1d4ed8', fontWeight: 600 }}>TR{String(t.id).padStart(3,'0')}</span>
-                <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>Completed</span>
+            <div key={t.id} style={{ padding: '10px 0', borderBottom: '1px solid #f9fafb' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#3b82f6', fontWeight: 700 }}>TR{String(t.id).padStart(3,'0')}</span>
+                <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>Done</span>
               </div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>{t.start_location || '—'} → {t.end_location || '—'}</div>
-              {t.distance_km && <div style={{ fontSize: '0.74rem', color: '#9ca3af', marginTop: '2px' }}>{t.distance_km.toFixed(1)} km · {t.trip_date || ''}</div>}
+              <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#374151' }}>{t.start_location || '—'} → {t.end_location || '—'}</div>
+              {t.distance_km && <div style={{ fontSize: '0.74rem', color: '#9ca3af', marginTop: 2 }}>{parseFloat(t.distance_km).toFixed(1)} km</div>}
             </div>
           ))}
         </div>
 
         {/* Notifications */}
-        <div style={CARD}>
-          <div style={{ ...STITLE, justifyContent: 'space-between' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}><Bell size={15} color="#1d4ed8" /> Notifications</span>
-            <Link to="/alerts" style={{ fontSize: '0.75rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>View All</Link>
+        <div style={card}>
+          <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Bell size={14} color="#3b82f6" />
+              </div>
+              Notifications
+            </span>
+            <Link to="/alerts" style={{ fontSize: '0.75rem', color: '#3b82f6', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+              View All <ArrowRight size={12} />
+            </Link>
           </div>
           {alerts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', fontSize: '0.82rem' }}>No new notifications</div>
+            <div style={{ textAlign: 'center', padding: '28px', color: '#9ca3af', fontSize: '0.82rem' }}>No new notifications</div>
           ) : alerts.map(a => (
-            <div key={a.id} style={{ display: 'flex', gap: '10px', padding: '10px 0', borderBottom: '1px solid #f1f5f9', alignItems: 'flex-start' }}>
-              <div style={{ marginTop: '2px', flexShrink: 0 }}>
-                {a.severity === 'high' || a.severity === 'critical'
-                  ? <AlertTriangle size={14} color="#dc2626" />
-                  : a.severity === 'medium'
-                  ? <AlertTriangle size={14} color="#d97706" />
-                  : <Bell size={14} color="#1d4ed8" />}
+            <div key={a.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid #f9fafb', alignItems: 'flex-start' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 6, flexShrink: 0,
+                background: a.severity === 'high' || a.severity === 'critical' ? '#fee2e2' : a.severity === 'medium' ? '#fef3c7' : '#eff6ff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={13} color={a.severity === 'high' || a.severity === 'critical' ? '#dc2626' : a.severity === 'medium' ? '#d97706' : '#3b82f6'} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '2px' }}>{a.title}</div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#111827', marginBottom: 2 }}>{a.title}</div>
                 <div style={{ fontSize: '0.74rem', color: '#9ca3af', lineHeight: 1.4 }}>{a.message?.slice(0, 70)}{a.message?.length > 70 ? '…' : ''}</div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Vehicle Documents */}
-        <div style={CARD}>
-          <div style={STITLE}><FileText size={15} color="#1d4ed8" /> Vehicle Documents</div>
+        {/* Documents */}
+        <div style={card}>
+          <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={14} color="#3b82f6" />
+              </div>
+              Vehicle Documents
+            </span>
+          </div>
           {[
             ['Registration Certificate (RC)', rcDoc],
             ['Insurance',                     insuranceDoc],
+            ['Driver License',                licenseDoc],
           ].map(([name, doc]) => (
-            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>{name}</span>
+            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f9fafb' }}>
+              <span style={{ fontSize: '0.82rem', color: '#374151' }}>{name}</span>
               <ExpiryBadge expiryDate={doc?.expiry_date} />
             </div>
           ))}
-          <Link to="/documents" style={{ display: 'block', textAlign: 'center', marginTop: '10px', fontSize: '0.8rem', color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>
-            View All →
+          <Link to="/documents" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 12, fontSize: '0.8rem', color: '#3b82f6', textDecoration: 'none', fontWeight: 600 }}>
+            View All <ArrowRight size={12} />
           </Link>
         </div>
       </div>
-
-
-
     </div>
   )
 }

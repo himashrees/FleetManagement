@@ -72,13 +72,17 @@ export const documentAPI = {
 }
 
 export const tripAPI = {
-  getAll:    (params)   => api.get('/trips', { params }),
-  getById:   (id)       => api.get(`/trips/${id}`),
-  startTrip: (data)     => api.post('/trips/start', data),
-  endTrip:   (id, data) => api.put(`/trips/${id}/end`, data),
+  getAll:       (params)   => api.get('/trips', { params }),
+  getById:      (id)       => api.get(`/trips/${id}`),
+  scheduleTrip: (data)     => api.post('/trips/schedule', data),
+  startTrip:    (id, data) => api.post('/trips/start', { trip_id: id, ...data }),
+  endTrip:      (id, data) => api.put(`/trips/${id}/end`, data),
+  cancelTrip:   (id)       => api.put(`/trips/${id}/cancel`),
 }
 
 export const alertAPI = {
+  checkExpiry: ()   => api.post(`/alerts/check-expiry`),
+  remove:      (id) => api.delete(`/alerts/${id}`),
   getAll:      (params) => api.get('/alerts', { params }),
   create:      (data)   => api.post('/alerts', data),
   markRead:    (id)     => api.put(`/alerts/${id}/read`),

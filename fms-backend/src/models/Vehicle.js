@@ -16,7 +16,8 @@ const Vehicle = sequelize.define('Vehicle', {
   vin_number:       { type: DataTypes.STRING(100) },
   insurance_expiry: { type: DataTypes.DATEONLY },
   rc_expiry:        { type: DataTypes.DATEONLY },
-  photo_url:        { type: DataTypes.TEXT },
+  photo_url:        { type: DataTypes.TEXT('long') },
+  on_trip:          { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'vehicles', timestamps: true });
 
 module.exports = Vehicle;

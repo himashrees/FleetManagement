@@ -42,5 +42,7 @@ Vehicle.hasMany(Alert,   { foreignKey: 'vehicle_id', as: 'alerts' });
 Alert.belongsTo(Vehicle, { foreignKey: 'vehicle_id', as: 'vehicle' });
 Driver.hasMany(Alert,    { foreignKey: 'driver_id',  as: 'alerts' });
 Alert.belongsTo(Driver,  { foreignKey: 'driver_id',  as: 'driver' });
+Driver.hasMany(Alert,    { foreignKey: 'assigned_driver_id', as: 'assignedAlerts' });
+Alert.belongsTo(Driver,  { foreignKey: 'assigned_driver_id', as: 'assignedDriver' });
 
 module.exports = { sequelize, User, Vehicle, Driver, GpsLog, Route, FuelLog, Maintenance, Document, Trip, Alert };

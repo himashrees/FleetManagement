@@ -114,12 +114,7 @@ export default function AdminDashboard() {
             Complete fleet overview — every vehicle, driver, and metric
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="live-badge"><span className="live-dot" /> System Online</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
-          </span>
-        </div>
+
       </div>
 
       {loading ? <LoadingState label="Fetching fleet summary…" /> : (

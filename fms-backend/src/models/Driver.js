@@ -9,7 +9,7 @@ const Driver = sequelize.define('Driver', {
   license_type:        { type: DataTypes.STRING(20) },
   experience_years:    { type: DataTypes.INTEGER, defaultValue: 0 },
   joining_date:        { type: DataTypes.DATEONLY },
-  photo_url:           { type: DataTypes.TEXT },
+  photo_url:           { type: DataTypes.TEXT('long') },
   status:              { type: DataTypes.ENUM('available','on_trip','off_duty','suspended'), defaultValue: 'available' },
   address:             { type: DataTypes.TEXT },
   emergency_contact:   { type: DataTypes.STRING(20) },

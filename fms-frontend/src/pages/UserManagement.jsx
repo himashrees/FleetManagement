@@ -167,7 +167,7 @@ export default function UserManagement() {
 
       {/* Add / Edit modal */}
       {(modal === 'add' || modal === 'edit') && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="overlay" onClick={() => setModal(null)}>
           <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{modal === 'add' ? '+ CREATE USER' : 'EDIT USER'}</div>
@@ -214,7 +214,7 @@ export default function UserManagement() {
 
       {/* Reset password modal */}
       {modal === 'resetpw' && selected && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="overlay" onClick={() => setModal(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title"><KeyRound size={14} /> RESET PASSWORD</div>
@@ -237,7 +237,7 @@ export default function UserManagement() {
 
       {/* Delete modal */}
       {modal === 'delete' && selected && (
-        <div className="modal-overlay" onClick={() => setModal(null)}>
+        <div className="overlay" onClick={() => setModal(null)}>
           <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header"><div className="modal-title" style={{ color: 'var(--red)' }}>CONFIRM DELETE</div></div>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>

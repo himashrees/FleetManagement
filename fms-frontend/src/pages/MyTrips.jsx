@@ -1,480 +1,472 @@
-import { useState, useEffect, useRef } from 'react'
-import { Square, RefreshCw, X, MapPin, Clock, Truck, Fuel, Receipt,
-         Upload, CheckCircle2, Camera, ArrowRight, Play } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { CheckCircle2, Camera, Upload, MapPin, ArrowRight, Info, Play, Square, X, Clock } from 'lucide-react'
 import { tripAPI } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { LoadingState, EmptyState, PageHeader } from '../components/Common'
 
-const STATUS_BADGE = {
-  planned:     'badge-amber',
-  in_progress: 'badge-blue',
-  completed:   'badge-green',
-  cancelled:   'badge-red',
+function fileToB64(file, onDone, onError) {
+  if (file.size > 5 * 1024 * 1024) { onError('File must be under 5 MB'); return }
+  const r = new FileReader()
+  r.onloadend = () => onDone(r.result)
+  r.readAsDataURL(file)
 }
 
-function fileToBase64(file, maxMB, onDone, onError) {
-  if (file.size > maxMB * 1024 * 1024) { onError(`File must be under ${maxMB}MB`); return }
-  const reader = new FileReader()
-  reader.onloadend = () => onDone(reader.result)
-  reader.readAsDataURL(file)
-}
-
-function OdoPhotoUpload({ label, value, onChange }) {
+function PhotoBox({ value, onChange, readOnly, label }) {
   const ref = useRef(null)
   return (
     <div>
-      <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6, color: 'var(--text-secondary)' }}>{label}</div>
-      <div
-        onClick={() => ref.current?.click()}
-        style={{
-          border: '1.5px dashed var(--border-dark)', borderRadius: 8,
-          background: value ? '#f0fdf4' : 'var(--bg-canvas)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          justifyContent: 'center', gap: 6, cursor: 'pointer',
-          overflow: 'hidden', minHeight: 100,
-        }}
-      >
-        {value ? (
-          <img src={value} alt="odometer" style={{ width: '100%', maxHeight: 140, objectFit: 'contain' }} />
-        ) : (
-          <>
-            <Camera size={22} color="#9ca3af" />
-            <span style={{ fontSize: '0.76rem', color: '#9ca3af' }}>Tap to upload photo</span>
-          </>
-        )}
+      {label && <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>{label}</div>}
+      <div onClick={() => !readOnly && ref.current?.click()} style={{
+        border: '1.5px dashed #d1d5db', borderRadius: 8, minHeight: 96,
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: 6, background: value ? '#f0fdf4' : '#fafafa',
+        cursor: readOnly ? 'default' : 'pointer', overflow: 'hidden',
+      }}>
+        {value
+          ? <img src={value} alt="" style={{ width: '100%', maxHeight: 120, objectFit: 'contain' }} />
+          : <><Camera size={22} color="#9ca3af" /><span style={{ fontSize: '0.76rem', color: '#9ca3af' }}>Upload Photo</span></>
+        }
+        {!readOnly && <input ref={ref} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onChange} />}
       </div>
-      {value && (
-        <div style={{ fontSize: '0.72rem', color: '#16a34a', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <CheckCircle2 size={11} /> Photo attached
-        </div>
-      )}
-      <input ref={ref} type="file" accept="image/*" capture="environment"
-        style={{ display: 'none' }} onChange={onChange} />
     </div>
   )
 }
 
+function ReceiptBox({ value, onChange, label }) {
+  return (
+    <div>
+      {label && <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>{label}</div>}
+      <label style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: 6, border: '1.5px dashed #d1d5db',
+        borderRadius: 8, padding: '18px 10px', cursor: 'pointer',
+        background: value ? '#f0fdf4' : '#fafafa', minHeight: 78,
+      }}>
+        {value
+          ? <><CheckCircle2 size={16} color="#16a34a" /><span style={{ fontSize: '0.74rem', color: '#16a34a' }}>Receipt attached</span></>
+          : <><Upload size={16} color="#9ca3af" /><span style={{ fontSize: '0.74rem', color: '#9ca3af' }}>Upload Receipt</span></>
+        }
+        <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={onChange} />
+      </label>
+    </div>
+  )
+}
+
+const inp = { width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: '0.82rem', color: '#111827', background: '#fff', outline: 'none', boxSizing: 'border-box' }
+const lbl = { fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 5, display: 'block' }
+const col = { background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 14 }
+const F = 'Inter, system-ui, sans-serif'
+
 export default function MyTrips() {
-  const [trips,   setTrips]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal,   setModal]   = useState(null) // 'start' | 'end'
-  const [selected, setSelected] = useState(null)
-  const [saving,  setSaving]  = useState(false)
-  const [completed, setCompleted] = useState(null) // trip summary after completion
-
-  // Start form
-  const [startForm, setStartForm] = useState({ start_odometer: '', start_odometer_photo: '' })
-  // End form
-  const [endForm, setEndForm] = useState({
-    end_location: '', end_odometer: '', end_odometer_photo: '',
-    fuel_filled: null, fuel_used: '', fuel_cost: '', fuel_station: '',
-    toll_charges: '', toll_receipt_url: '', fuel_receipt_url: '', notes: '',
-  })
-
+  const { user } = useAuth()
   const toast = useToast()
 
-  const load = () => {
-    setLoading(true)
-    tripAPI.getAll()
-      .then(r => setTrips((r.data.data || []).filter(t => t.status === 'planned' || t.status === 'in_progress')))
-      .catch(() => toast.error('Failed to load trips'))
-      .finally(() => setLoading(false))
+  const [trips, setTrips]         = useState([])
+  const [activeTrip, setActiveTrip] = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+
+  // Start trip popup
+  const [showStartPopup, setShowStartPopup] = useState(false)
+  const [pendingTrip, setPendingTrip]       = useState(null)
+  const [startOdom,     setStartOdom]       = useState('')
+  const [startOdomPic,  setStartOdomPic]    = useState(null)
+  const [vehicleBefore, setVehicleBefore]   = useState(null)
+
+  // End trip fields
+  const [endOdom,      setEndOdom]      = useState('')
+  const [endOdomPic,   setEndOdomPic]   = useState(null)
+  const [vehicleAfter, setVehicleAfter] = useState(null)
+
+  // Fuel & toll
+  const [fuelStation,  setFuelStation]  = useState('')
+  const [fuelLiters,   setFuelLiters]   = useState('')
+  const [fuelAmount,   setFuelAmount]   = useState('')
+  const [fuelReceipt,  setFuelReceipt]  = useState(null)
+  const [otherCharge,  setOtherCharge]  = useState('')
+  const [tollLocation, setTollLocation] = useState('')
+  const [tollAmount,   setTollAmount]   = useState('')
+  const [tollReceipt,  setTollReceipt]  = useState(null)
+
+  const img = setter => e => {
+    const f = e.target.files[0]; if (!f) return
+    fileToB64(f, b64 => setter(b64), msg => toast.error(msg))
   }
+
+  const totalCharges = (parseFloat(fuelAmount) || 0) + (parseFloat(tollAmount) || 0) + (parseFloat(otherCharge) || 0)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await tripAPI.getAll({})
+      const all = r.data.data || []
+      // Driver sees scheduled (upcoming) + in_progress (ongoing) trips
+      const mine = all.filter(t => t.status === 'scheduled' || t.status === 'in_progress')
+      setTrips(mine)
+      const ongoing = mine.find(t => t.status === 'in_progress')
+      if (ongoing) setActiveTrip(ongoing)
+      else setActiveTrip(null)
+    } catch { toast.error('Failed to load trips') }
+    finally { setLoading(false) }
+  }
+
   useEffect(() => { load() }, [])
 
-  const sf = k => e => setStartForm(p => ({ ...p, [k]: e.target.value }))
-  const ef = k => e => setEndForm(p => ({ ...p, [k]: e.target.value }))
-
-  /* ── START TRIP ── */
-  const openStart = (trip) => {
-    setSelected(trip)
-    setStartForm({ start_odometer: trip.start_odometer || '', start_odometer_photo: '' })
-    setModal('start')
+  // Opens the "Start Trip" popup — does NOT change status yet
+  const openStartPopup = (trip) => {
+    setPendingTrip(trip)
+    setStartOdom('')
+    setStartOdomPic(null)
+    setVehicleBefore(null)
+    setError('')
+    setShowStartPopup(true)
   }
 
-  const handleStart = async () => {
-    if (!startForm.start_odometer) { toast.error('Enter start odometer reading'); return }
+  // Confirm Start — calls backend, changes status to in_progress
+  const handleConfirmStart = async () => {
+    if (!startOdom) { setError('Start odometer reading is required'); return }
+    setError('')
     setSaving(true)
     try {
-      await tripAPI.startTrip(selected.id, startForm)
-      toast.success('Trip started! Odometer updated ✓')
-      setModal(null); load()
-    } catch (err) { toast.error(err.response?.data?.message || 'Failed to start') }
-    finally { setSaving(false) }
-  }
-
-  /* ── END TRIP ── */
-  const openEnd = (trip) => {
-    setSelected(trip)
-    setEndForm({
-      end_location: trip.end_location || '', end_odometer: '',
-      end_odometer_photo: '', fuel_filled: null,
-      fuel_used: '', fuel_cost: '', fuel_station: '',
-      toll_charges: '', toll_receipt_url: '', fuel_receipt_url: '', notes: '',
-    })
-    setModal('end')
-  }
-
-  const handleEnd = async () => {
-    if (!endForm.end_odometer)       { toast.error('Enter end odometer reading'); return }
-    if (endForm.fuel_filled === null) { toast.error('Select whether fuel was filled'); return }
-    if (endForm.fuel_filled) {
-      if (!endForm.fuel_used) { toast.error('Enter fuel quantity'); return }
-      if (!endForm.fuel_cost) { toast.error('Enter fuel cost'); return }
-    }
-    setSaving(true)
-    try {
-      const res = await tripAPI.endTrip(selected.id, endForm)
-      setCompleted({ ...res.data.data, ...endForm })
-      setModal('summary')
+      await tripAPI.startTrip(pendingTrip.id, {
+        start_odometer:       parseFloat(startOdom),
+        start_odometer_photo: startOdomPic || null,
+        vehicle_photo_before: vehicleBefore || null,
+      })
+      toast.success('Trip started! Admin has been notified.')
+      setShowStartPopup(false)
+      setPendingTrip(null)
       load()
-    } catch (err) { toast.error(err.response?.data?.message || 'Failed to complete') }
-    finally { setSaving(false) }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to start trip')
+    } finally { setSaving(false) }
   }
 
-  const distance = endForm.end_odometer && selected?.start_odometer
-    ? (parseFloat(endForm.end_odometer) - parseFloat(selected.start_odometer)).toFixed(1)
-    : null
+  const handleComplete = async () => {
+    if (!endOdom) { setError('End odometer reading is required'); return }
+    setError('')
+    setSaving(true)
+    try {
+      await tripAPI.endTrip(activeTrip.id, {
+        end_odometer:        parseFloat(endOdom),
+        end_odometer_photo:  endOdomPic   || null,
+        vehicle_photo_after: vehicleAfter || null,
+        fuel_used:           parseFloat(fuelLiters) || null,
+        fuel_cost:           parseFloat(fuelAmount) || null,
+        fuel_station:        fuelStation || null,
+        fuel_receipt_url:    fuelReceipt || null,
+        toll_charges:        parseFloat(tollAmount) || null,
+        toll_location:       tollLocation || null,
+        toll_receipt_url:    tollReceipt  || null,
+        other_charges:       parseFloat(otherCharge) || null,
+      })
+      toast.success('Trip completed! Admin has been notified.')
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to complete trip')
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontFamily: F }}>Loading trips…</div>
+
+  // ── No active or scheduled trip ──
+  if (!activeTrip && trips.length === 0) {
+    return (
+      <div style={{ fontFamily: F }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#111827' }}>My Trips</div>
+          <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>Your assigned trips</div>
+        </div>
+        <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 12, padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+          No trips assigned yet
+        </div>
+      </div>
+    )
+  }
+
+  // ── List of scheduled (upcoming) trips — show before any is active ──
+  if (!activeTrip) {
+    return (
+      <div style={{ fontFamily: F }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#111827' }}>My Trips</div>
+          <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>Your assigned trips</div>
+        </div>
+
+        {trips.map(trip => (
+          <div key={trip.id} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 12, padding: '18px 20px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#2563eb', fontSize: '0.92rem' }}>
+                    TRP{String(trip.id).padStart(3, '0')}
+                  </span>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 10px', borderRadius: 999, background: '#fff7ed', color: '#d97706', border: '1px solid #fed7aa' }}>
+                    UPCOMING
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.83rem', color: '#374151', marginBottom: 6 }}>
+                  <MapPin size={12} color="#9ca3af" />
+                  <span style={{ fontWeight: 600 }}>{trip.start_location || '—'}</span>
+                  <ArrowRight size={12} color="#9ca3af" />
+                  <span style={{ fontWeight: 600 }}>{trip.end_location || '—'}</span>
+                </div>
+                {trip.vehicle && (
+                  <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 4 }}>
+                    {trip.vehicle.registration_no} · {trip.vehicle.make} {trip.vehicle.model}
+                  </div>
+                )}
+                {trip.reporting_time && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#6b7280' }}>
+                    <Clock size={12} />
+                    Reporting: {new Date(trip.reporting_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
+                {trip.cargo_type && (
+                  <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 3 }}>Cargo: {trip.cargo_type}{trip.cargo_weight ? ` · ${trip.cargo_weight} kg` : ''}</div>
+                )}
+              </div>
+              <button onClick={() => openStartPopup(trip)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px',
+                background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
+                fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer',
+              }}>
+                <Play size={14} /> Start Trip
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {/* Start Trip Popup */}
+        {showStartPopup && pendingTrip && (
+          <div onClick={() => setShowStartPopup(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>Start Trip</div>
+                  <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>TRP{String(pendingTrip.id).padStart(3,'0')} · {pendingTrip.start_location} → {pendingTrip.end_location}</div>
+                </div>
+                <button onClick={() => setShowStartPopup(false)} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
+              </div>
+              <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={lbl}>Start Odometer (KM) *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input style={{ ...inp, borderColor: error && !startOdom ? '#ef4444' : '#e5e7eb' }}
+                      type="number" value={startOdom} onChange={e => { setStartOdom(e.target.value); setError('') }}
+                      placeholder="Enter current odometer reading" />
+                    <span style={{ fontSize: '0.78rem', color: '#9ca3af', flexShrink: 0 }}>km</span>
+                  </div>
+                </div>
+                <PhotoBox value={startOdomPic} onChange={img(setStartOdomPic)} label="Upload Odometer Photo" />
+                <PhotoBox value={vehicleBefore} onChange={img(setVehicleBefore)} label="Upload Vehicle Photo (Before)" />
+                {error && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Info size={13} /> {error}
+                  </div>
+                )}
+                <button onClick={handleConfirmStart} disabled={saving} style={{
+                  width: '100%', padding: '12px', border: 'none', borderRadius: 8,
+                  background: '#16a34a', color: '#fff', fontSize: '0.92rem', fontWeight: 700,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}>
+                  <Play size={16} /> {saving ? 'Starting…' : 'Confirm Start'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Active / Ongoing trip — show the 4-column workflow ──
+  const trip = activeTrip
+  const isOngoing = trip.status === 'in_progress'
 
   return (
-    <div className="page-enter">
-      <PageHeader title="My" accent="Trips" sub={`${trips.length} active or planned`}>
-        <button className="btn-icon" onClick={load}><RefreshCw size={14} /></button>
-      </PageHeader>
+    <div style={{ fontFamily: F }}>
 
-      {loading ? <LoadingState label="Loading your trips…" /> :
-       trips.length === 0 ? <EmptyState icon="🚚" title="No active trips" sub="Your fleet manager hasn't scheduled a trip yet" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {trips.map(t => (
-            <div key={t.id} className="chart-card"
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                <div style={{ width: 42, height: 42, background: 'var(--brand-light)', borderRadius: 10,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Truck size={18} color="var(--brand)" />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontSize: '0.88rem' }}>
-                    {t.vehicle?.registration_no || '—'}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.84rem',
-                    color: 'var(--text-secondary)', marginTop: 2 }}>
-                    <MapPin size={12} color="#9ca3af" /> {t.start_location || '—'}
-                    <ArrowRight size={11} color="#9ca3af" />
-                    <MapPin size={12} color="#2563eb" /> {t.end_location || '—'}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.76rem',
-                    color: 'var(--text-muted)', marginTop: 4 }}>
-                    <Clock size={11} />
-                    {t.trip_date || '—'}
-                    {t.scheduled_start_time && ` · ${t.scheduled_start_time}`}
-                    {' · '}Start Odo: <strong style={{ fontFamily: 'var(--font-mono)' }}>{t.start_odometer || '—'} km</strong>
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className={`badge ${STATUS_BADGE[t.status] || 'badge-slate'}`}>
-                  {t.status?.replace('_', ' ')}
-                </span>
-                {t.status === 'planned' && (
-                  <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}
-                    onClick={() => openStart(t)}>
-                    <Play size={13} /> Start Trip
-                  </button>
-                )}
-                {t.status === 'in_progress' && (
-                  <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px',
-                    background: '#16a34a', borderColor: '#16a34a' }}
-                    onClick={() => openEnd(t)}>
-                    <Square size={13} /> Complete Trip
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ════ START TRIP MODAL ════ */}
-      {modal === 'start' && selected && (
-        <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
-          <div className="modal">
-            <div className="modal-header">
-              <div className="modal-title"><Play size={14} /> Start Trip #{selected.id}</div>
-              <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
-            </div>
-
-            {/* Trip summary */}
-            <div style={{ padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 8,
-              marginBottom: 18, fontSize: '0.82rem', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+      {/* Trip info banner */}
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '14px 20px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.95rem', color: '#111827' }}>
+            TRP{String(trip.id).padStart(3,'0')}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.83rem', color: '#374151' }}>
+            <MapPin size={13} color="#9ca3af" />
+            <span style={{ fontWeight: 600 }}>{trip.start_location || '—'}</span>
+            <ArrowRight size={13} color="#9ca3af" />
+            <span style={{ fontWeight: 600 }}>{trip.end_location || '—'}</span>
+          </div>
+          {trip.vehicle && (
+            <>
+              <div style={{ width: 1, height: 34, background: '#e5e7eb' }} />
               <div>
-                <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>VEHICLE</div>
-                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 700 }}>
-                  {selected.vehicle?.registration_no}
-                </div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Vehicle</div>
+                <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#111827' }}>{trip.vehicle.registration_no}</div>
+                <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{trip.vehicle.make}</div>
               </div>
+            </>
+          )}
+          {trip.cargo_type && (
+            <>
+              <div style={{ width: 1, height: 34, background: '#e5e7eb' }} />
               <div>
-                <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>ROUTE</div>
-                <div>{selected.start_location || '—'} → {selected.end_location || '—'}</div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Load / Cargo</div>
+                <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#111827' }}>{trip.cargo_type}</div>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Odometer reading */}
-              <div className="form-group">
-                <label className="form-label">Start Odometer Reading (km) *</label>
-                <input className="input" type="number" value={startForm.start_odometer}
-                  onChange={sf('start_odometer')} placeholder="e.g. 18500" />
-                <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
-                  This will update the vehicle odometer for admin/manager instantly
-                </div>
-              </div>
-
-              {/* Odometer photo */}
-              <OdoPhotoUpload
-                label="📷 Upload Odometer Photo (Recommended)"
-                value={startForm.start_odometer_photo}
-                onChange={e => {
-                  const file = e.target.files[0]
-                  if (!file) return
-                  fileToBase64(file, 3,
-                    b64 => setStartForm(p => ({ ...p, start_odometer_photo: b64 })),
-                    msg => toast.error(msg)
-                  )
-                }}
-              />
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleStart} disabled={saving}
-                style={{ background: '#16a34a', borderColor: '#16a34a' }}>
-                <Play size={13} />{saving ? 'Starting...' : 'Start Trip'}
-              </button>
-            </div>
+            </>
+          )}
+          <div style={{ marginLeft: 'auto' }}>
+            <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+              IN PROGRESS
+            </span>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ════ COMPLETE TRIP MODAL ════ */}
-      {modal === 'end' && selected && (
-        <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null) }}>
-          <div className="modal modal-wide">
-            <div className="modal-header">
-              <div className="modal-title"><CheckCircle2 size={14} /> Complete Trip #{selected.id}</div>
-              <button className="btn-icon" onClick={() => setModal(null)}><X size={14} /></button>
+      {/* Progress steps */}
+      <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '16px 24px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {[
+          { n: 1, label: 'Start Trip',   color: '#16a34a', done: true },
+          { n: 2, label: 'Fuel Charges', color: '#16a34a', done: false, sub: 'Update if used' },
+          { n: 3, label: 'Toll Charges', color: '#7c3aed', done: false, sub: 'Update if used' },
+          { n: 4, label: 'End Trip',     color: '#f97316', done: false },
+        ].map((s, i) => (
+          <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < 3 ? 1 : 'none' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: s.done ? s.color : '#f3f4f6', border: `2px solid ${s.done ? s.color : '#e5e7eb'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {s.done ? <CheckCircle2 size={16} color="#fff" /> : <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#9ca3af' }}>{s.n}</span>}
+              </div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: s.done ? s.color : '#9ca3af', whiteSpace: 'nowrap' }}>{s.label}</span>
+              {s.sub && <span style={{ fontSize: '0.66rem', color: '#9ca3af' }}>{s.sub}</span>}
             </div>
+            {i < 3 && <div style={{ flex: 1, height: 2, background: '#e5e7eb', margin: '0 8px', marginBottom: 24 }} />}
+          </div>
+        ))}
+      </div>
 
-            <div style={{ padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 8,
-              marginBottom: 18, fontSize: '0.82rem', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>VEHICLE</div>
-                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--amber)', fontWeight: 700 }}>
-                  {selected.vehicle?.registration_no}
-                </div>
-              </div>
-              <div>
-                <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>FROM</div>
-                <div>{selected.start_location || '—'}</div>
-              </div>
-              <div>
-                <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>START ODO</div>
-                <div style={{ fontFamily: 'var(--font-mono)' }}>{selected.start_odometer} km</div>
-              </div>
+      {/* 4-col form — cols 2-4 only active when ongoing */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+
+        {/* COL 1: Start Trip — already done */}
+        <div style={col}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={14} color="#16a34a" />
             </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>Start Trip Details</span>
+          </div>
+          <div>
+            <label style={lbl}>Start Odometer</label>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#111827', fontFamily: 'monospace' }}>
+              {trip.start_odometer != null ? `${trip.start_odometer} km` : '—'}
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Started At</label>
+            <div style={{ fontSize: '0.82rem', color: '#374151' }}>
+              {trip.start_time ? new Date(trip.start_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+            </div>
+          </div>
+          {trip.start_odometer_photo && (
+            <div>
+              <label style={lbl}>Odometer Photo</label>
+              <img src={trip.start_odometer_photo} alt="" style={{ width: '100%', borderRadius: 6, border: '1px solid #e5e7eb' }} />
+            </div>
+          )}
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#16a34a', fontWeight: 600, textAlign: 'center' }}>
+            ✓ Trip Started
+          </div>
+        </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* COL 2: Fuel Charges */}
+        <div style={{ ...col, opacity: isOngoing ? 1 : 0.5, pointerEvents: isOngoing ? 'auto' : 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#16a34a' }}>2</span>
+            </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>Fuel Charges</span>
+          </div>
+          <div><label style={lbl}>Fuel Station</label><input style={inp} value={fuelStation} onChange={e => setFuelStation(e.target.value)} placeholder="Enter fuel station name" /></div>
+          <div><label style={lbl}>Liters (L)</label><input style={inp} type="number" step="0.1" value={fuelLiters} onChange={e => setFuelLiters(e.target.value)} placeholder="Enter liters" /></div>
+          <div><label style={lbl}>Amount (₹)</label><input style={inp} type="number" value={fuelAmount} onChange={e => setFuelAmount(e.target.value)} placeholder="Enter amount" /></div>
+          <ReceiptBox value={fuelReceipt} onChange={img(setFuelReceipt)} label="Receipt Photo" />
+          <div><label style={lbl}>Other Charges (Optional)</label><input style={inp} value={otherCharge} onChange={e => setOtherCharge(e.target.value)} placeholder="Enter other charges" /></div>
+        </div>
 
-              {/* End odometer + photo side by side */}
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">End Odometer (km) *</label>
-                  <input className="input" type="number" value={endForm.end_odometer}
-                    onChange={ef('end_odometer')} placeholder="e.g. 45680" />
-                  {distance && (
-                    <p style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                      Distance: {distance} km
-                    </p>
-                  )}
-                  <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
-                    Vehicle odometer will auto-update for admin
-                  </div>
-                </div>
-                <OdoPhotoUpload
-                  label="📷 End Odometer Photo (Recommended)"
-                  value={endForm.end_odometer_photo}
-                  onChange={e => {
-                    const file = e.target.files[0]
-                    if (!file) return
-                    fileToBase64(file, 3,
-                      b64 => setEndForm(p => ({ ...p, end_odometer_photo: b64 })),
-                      msg => toast.error(msg)
-                    )
-                  }}
-                />
+        {/* COL 3: Toll Charges */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: isOngoing ? 1 : 0.5, pointerEvents: isOngoing ? 'auto' : 'none' }}>
+          <div style={col}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#f5f3ff', border: '2px solid #7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed' }}>3</span>
               </div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7c3aed' }}>Toll Charges</span>
+            </div>
+            <div><label style={lbl}>Toll Plaza / Location</label><input style={inp} value={tollLocation} onChange={e => setTollLocation(e.target.value)} placeholder="Enter toll plaza / location" /></div>
+            <div><label style={lbl}>Amount (₹)</label><input style={inp} type="number" value={tollAmount} onChange={e => setTollAmount(e.target.value)} placeholder="Enter amount" /></div>
+            <ReceiptBox value={tollReceipt} onChange={img(setTollReceipt)} label="Receipt Photo" />
+          </div>
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>Total Charges (₹)</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'monospace' }}>
+              {totalCharges > 0 ? `₹${totalCharges.toLocaleString('en-IN')}` : '—'}
+            </span>
+          </div>
+        </div>
 
-              <div className="form-group">
-                <label className="form-label">End Location</label>
-                <input className="input" value={endForm.end_location} onChange={ef('end_location')} />
+        {/* COL 4: End Trip */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: isOngoing ? 1 : 0.5, pointerEvents: isOngoing ? 'auto' : 'none' }}>
+          <div style={col}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 12, borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff7ed', border: '2px solid #f97316', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f97316' }}>4</span>
               </div>
-
-              <div style={{ borderTop: '1px solid var(--border)' }} />
-
-              {/* Fuel filled? */}
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Fuel size={13} color="var(--brand)" /> Fuel Filled?
-                </label>
-                <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                  {[true, false].map(val => (
-                    <button key={String(val)} type="button"
-                      onClick={() => setEndForm(p => ({
-                        ...p, fuel_filled: val,
-                        ...(val === false ? { fuel_used: '', fuel_cost: '', fuel_station: '', fuel_receipt_url: '' } : {})
-                      }))}
-                      style={{
-                        flex: 1, padding: '10px 16px', borderRadius: 'var(--radius)', cursor: 'pointer',
-                        border: `1.5px solid ${endForm.fuel_filled === val ? (val ? '#16a34a' : '#6b7280') : 'var(--border)'}`,
-                        background: endForm.fuel_filled === val ? (val ? '#f0fdf4' : '#f3f4f6') : 'white',
-                        color: endForm.fuel_filled === val ? (val ? '#15803d' : '#374151') : 'var(--text-secondary)',
-                        fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', gap: 6,
-                      }}>
-                      {endForm.fuel_filled === val && <CheckCircle2 size={14} />}
-                      {val ? 'Yes' : 'No'}
-                    </button>
-                  ))}
-                </div>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f97316' }}>End Trip Details</span>
+            </div>
+            <div>
+              <label style={lbl}>End Odometer (KM)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input style={{ ...inp, borderColor: error && !endOdom ? '#ef4444' : '#e5e7eb' }}
+                  type="number" value={endOdom} onChange={e => { setEndOdom(e.target.value); setError('') }}
+                  placeholder="Enter end odometer" />
+                <span style={{ fontSize: '0.78rem', color: '#9ca3af', flexShrink: 0 }}>km</span>
               </div>
-
-              {endForm.fuel_filled === true && (
-                <div style={{ background: 'var(--bg-canvas)', borderRadius: 8, padding: 14,
-                  display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Fuel Quantity (L) *</label>
-                      <input className="input" type="number" step="0.1" value={endForm.fuel_used}
-                        onChange={ef('fuel_used')} placeholder="e.g. 35.5" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Fuel Cost (₹) *</label>
-                      <input className="input" type="number" step="0.01" value={endForm.fuel_cost}
-                        onChange={ef('fuel_cost')} placeholder="e.g. 3200" />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Fuel Station</label>
-                    <input className="input" value={endForm.fuel_station} onChange={ef('fuel_station')}
-                      placeholder="e.g. HP Petrol Pump, Mysuru" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Upload Fuel Receipt</label>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      border: '1.5px dashed var(--border-dark)', borderRadius: 8, padding: '12px',
-                      cursor: 'pointer', fontSize: '0.84rem', color: 'var(--text-muted)',
-                      background: endForm.fuel_receipt_url ? '#f0fdf4' : 'white' }}>
-                      {endForm.fuel_receipt_url
-                        ? <><CheckCircle2 size={14} color="#16a34a" /> <span style={{ color: '#15803d' }}>Receipt attached</span></>
-                        : <><Upload size={14} /> Upload fuel receipt (optional)</>}
-                      <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
-                        onChange={e => {
-                          const file = e.target.files[0]; if (!file) return
-                          fileToBase64(file, 3, b64 => setEndForm(p => ({ ...p, fuel_receipt_url: b64 })), msg => toast.error(msg))
-                        }} />
-                    </label>
-                  </div>
+              {endOdom && trip.start_odometer && (
+                <div style={{ marginTop: 5, fontSize: '0.76rem', color: '#2563eb', fontWeight: 600 }}>
+                  Distance: {Math.max(0, parseFloat(endOdom) - parseFloat(trip.start_odometer)).toFixed(0)} km
                 </div>
               )}
-
-              <div style={{ borderTop: '1px solid var(--border)' }} />
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Receipt size={13} color="var(--amber)" /> Toll Charges (₹)
-                  </label>
-                  <input className="input" type="number" step="0.01" value={endForm.toll_charges}
-                    onChange={ef('toll_charges')} placeholder="e.g. 150" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Upload Toll Receipt</label>
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    border: '1.5px dashed var(--border-dark)', borderRadius: 8, padding: '10px',
-                    cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-muted)',
-                    background: endForm.toll_receipt_url ? '#f0fdf4' : 'white' }}>
-                    {endForm.toll_receipt_url
-                      ? <><CheckCircle2 size={14} color="#16a34a" /> Attached</>
-                      : <><Upload size={13} /> Optional</>}
-                    <input type="file" accept="image/*,.pdf" style={{ display: 'none' }}
-                      onChange={e => {
-                        const file = e.target.files[0]; if (!file) return
-                        fileToBase64(file, 3, b64 => setEndForm(p => ({ ...p, toll_receipt_url: b64 })), msg => toast.error(msg))
-                      }} />
-                  </label>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Remarks</label>
-                <textarea className="input" value={endForm.notes} onChange={ef('notes')} rows={2}
-                  placeholder="Any additional notes..." />
-              </div>
             </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleEnd} disabled={saving}>
-                <CheckCircle2 size={13} />{saving ? 'Completing...' : 'Complete Trip'}
-              </button>
-            </div>
+            <PhotoBox value={endOdomPic}   onChange={img(setEndOdomPic)}   label="Odometer Photo (At End)" />
+            <PhotoBox value={vehicleAfter} onChange={img(setVehicleAfter)} label="Vehicle Photo (After)" />
           </div>
+
+          {error && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', fontSize: '0.78rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Info size={13} /> {error}
+            </div>
+          )}
+
+          <button onClick={handleComplete} disabled={saving || !isOngoing} style={{
+            width: '100%', padding: '14px', border: 'none', borderRadius: 8,
+            background: isOngoing ? '#f97316' : '#e5e7eb', color: isOngoing ? '#fff' : '#9ca3af',
+            fontSize: '0.92rem', fontWeight: 700, cursor: isOngoing ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            boxShadow: isOngoing ? '0 4px 14px rgba(249,115,22,0.35)' : 'none',
+          }}>
+            <Square size={17} /> {saving ? 'Completing…' : 'Complete Trip'}
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* ════ TRIP SUMMARY MODAL ════ */}
-      {modal === 'summary' && completed && (
-        <div className="overlay">
-          <div className="modal" style={{ maxWidth: 440, textAlign: 'center' }}>
-            <div style={{ padding: '24px 0 8px' }}>
-              <div style={{ width: 64, height: 64, background: '#dcfce7', borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-                <CheckCircle2 size={32} color="#16a34a" />
-              </div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#15803d', marginBottom: 4 }}>
-                Trip Completed!
-              </div>
-              <div style={{ fontSize: '0.83rem', color: 'var(--text-muted)' }}>Here's your trip summary</div>
-            </div>
-
-            <div style={{ background: 'var(--bg-canvas)', borderRadius: 10, padding: 16, margin: '16px 0',
-              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, textAlign: 'left' }}>
-              {[
-                ['Trip ID', `#${selected?.id}`],
-                ['Distance', distance ? `${distance} km` : '—'],
-                ['End Odometer', `${endForm.end_odometer} km`],
-                ['Fuel Quantity', endForm.fuel_filled ? `${endForm.fuel_used} L` : '—'],
-                ['Fuel Cost', endForm.fuel_filled ? `₹${endForm.fuel_cost}` : '—'],
-                ['Toll', endForm.toll_charges ? `₹${endForm.toll_charges}` : '—'],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginBottom: 2 }}>{label}</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.88rem' }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: 16 }}>
-              ✓ Vehicle odometer updated for admin/manager
-              {endForm.fuel_filled && <><br />✓ Fuel log auto-created in system</>}
-            </div>
-
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setModal(null)}>
-              Done
-            </button>
-          </div>
-        </div>
-      )}
+      <div style={{ marginTop: 16, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.79rem', color: '#0369a1' }}>
+        <Info size={14} style={{ flexShrink: 0 }} />
+        Note: Please update all details and upload required photos before completing the trip.
+      </div>
     </div>
   )
 }

@@ -131,7 +131,7 @@ exports.forgotPassword = async (req, res) => {
     user.reset_password_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await user.save();
 
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
     await sendPasswordResetEmail(user.email, resetUrl, user.name);
 
     return res.status(200).json(genericResponse);
@@ -148,14 +148,14 @@ exports.forgotPassword = async (req, res) => {
  */
 exports.resetPassword = async (req, res) => {
   try {
-    const { email, token, newPassword } = req.body;
-    if (!email || !token || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Email, token, and new password are required' });
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Token and new password are required' });
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
     const user = await User.findOne({
-      where: { email, reset_password_token: hashedToken },
+      where: { reset_password_token: hashedToken },
     });
 
     if (!user || !user.reset_password_expires || user.reset_password_expires < new Date()) {

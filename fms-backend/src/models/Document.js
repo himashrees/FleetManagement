@@ -7,6 +7,7 @@ const Document = sequelize.define('Document', {
   driver_id:         { type: DataTypes.INTEGER },
   type:              { type: DataTypes.ENUM('insurance','registration','permit','license','pollution','other') },
   title:             { type: DataTypes.STRING(150), allowNull: false },
+  document_no:       { type: DataTypes.STRING(100) },
   file_path:         { type: DataTypes.STRING(300) },
   expiry_date:       { type: DataTypes.DATEONLY },
   issued_date:       { type: DataTypes.DATEONLY },

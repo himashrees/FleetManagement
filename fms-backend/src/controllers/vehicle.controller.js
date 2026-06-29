@@ -4,11 +4,18 @@ const { computeVehicleHealthScore } = require('../utils/scoring');
 
 exports.getAll = async (req, res) => {
   try {
-    const { status, type, search } = req.query;
+    const { status, type, search, available } = req.query;
     const where = {};
     if (status) where.status = status;
     if (type)   where.type   = type;
     if (search) where.registration_no = { [Op.like]: `%${search}%` };
+
+    // available=true → only vehicles not currently on a trip (on_trip is kept up to
+    // date directly by trip.controller.js on start/end/cancel), so the "schedule trip"
+    // vehicle picker only shows vehicles actually free to take a new trip.
+    if (available === 'true' || available === '1') {
+      where.on_trip = false;
+    }
 
     const vehicles = await Vehicle.findAll({
       where,
