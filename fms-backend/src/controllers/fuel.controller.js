@@ -56,7 +56,7 @@
 //     return res.status(500).json({ success: false, message: err.message });
 //   }
 // };
-const { FuelLog, Driver } = require('../models');
+const { FuelLog, Driver, Vehicle } = require('../models');
 const { Op } = require('sequelize');
 
 exports.getAll = async (req, res) => {
@@ -100,13 +100,22 @@ exports.create = async (req, res) => {
 
     const total_cost = (parseFloat(litres) * parseFloat(cost_per_litre)).toFixed(2);
 
+    // Default the fuel type to whatever was registered on the vehicle itself,
+    // rather than hardcoding 'diesel' — keeps fuel logs consistent with what
+    // was set up in Vehicles without making the user re-select it every time.
+    let resolvedFuelType = fuel_type;
+    if (!resolvedFuelType) {
+      const vehicle = await Vehicle.findByPk(vehicle_id);
+      resolvedFuelType = vehicle?.fuel_type || 'diesel';
+    }
+
     const log = await FuelLog.create({
       vehicle_id:     parseInt(vehicle_id),
       driver_id:      driver_id ? parseInt(driver_id) : null,
       litres:         parseFloat(litres),
       cost_per_litre: parseFloat(cost_per_litre),
       total_cost,
-      fuel_type:      fuel_type || 'diesel',
+      fuel_type:      resolvedFuelType,
       odometer_km:    odometer_km ? parseFloat(odometer_km) : null,
       station_name:   station_name || null,
       filled_at:      new Date(),

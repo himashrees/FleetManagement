@@ -349,13 +349,18 @@
 
 
 import { useState, useEffect, useRef } from 'react'
-import { MapPin, RefreshCw, Navigation, Activity, Zap, Map, Truck, Clock, AlertTriangle, TrendingUp, Eye, X, ChevronRight, Wifi, WifiOff } from 'lucide-react'
+import { io } from 'socket.io-client'
+import { MapPin, RefreshCw, Navigation, Activity, Zap, Map, Truck, Clock, AlertTriangle, TrendingUp, Eye, X, ChevronRight, Wifi, WifiOff, Satellite, Play, Square } from 'lucide-react'
 import { gpsAPI, vehicleAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
 import { LoadingState, EmptyState, PageHeader } from '../components/Common'
 
 let L = null
+
+// Single shared socket connection — the backend's HTTP server (Socket.io is
+// attached to the same server as Express) runs on :5000 in dev.
+const SOCKET_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin
 
 // ── Vehicle SVG icons by type ──────────────────────────────────────────────
 const VEHICLE_ICONS = {
@@ -454,11 +459,42 @@ function speedColor(kmh) {
 // ── Stat chip ──────────────────────────────────────────────────────────────
 function StatChip({ icon: Icon, value, label, color }) {
   return (
-    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <Icon size={13} color={color} />
-        <span style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
+    <div
+      className="kpi-card"
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${color}40, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${color}25`; e.currentTarget.style.transform = 'translateY(0)' }}
+      style={{
+        background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+        padding: '14px 16px', minWidth: 0,
+        boxShadow: `0 2px 8px ${color}25`,
+        transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
+        '--icon-glow': `${color}80`,
+      }}
+    >
+      <style>{`
+        @keyframes kpi-ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.8); opacity: 0;   }
+          100% { transform: scale(1);   opacity: 0;   }
+        }
+        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
+        .kpi-card:hover .kpi-icon { transform: scale(1.18) rotate(-8deg); box-shadow: 0 6px 16px var(--icon-glow, rgba(0,0,0,0.18)); }
+        .kpi-icon { transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease; }
+      `}</style>
+      <div style={{ position: 'relative', display: 'inline-flex', marginBottom: 8 }}>
+        <div className="kpi-icon" style={{
+          width: 32, height: 32, borderRadius: 9, background: `${color}1a`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative', zIndex: 1,
+        }}>
+          <Icon size={15} color={color} />
+        </div>
+        <div className="kpi-ring" style={{
+          position: 'absolute', inset: -4, borderRadius: 9,
+          border: `2px solid ${color}`, opacity: 0, pointerEvents: 'none',
+        }} />
       </div>
+      <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
       <span style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'var(--font-display)', color }}>{value}</span>
     </div>
   )
@@ -535,10 +571,13 @@ export default function GpsTracking() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [pushForm, setPushForm] = useState({ vehicle_id: '', latitude: '', longitude: '', speed_kmh: '' })
   const [showPush, setShowPush] = useState(false)
-  const [autoRefresh, setAutoRefresh] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const [mapStyle, setMapStyle] = useState('streets')
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [socketConnected, setSocketConnected] = useState(false)
+  const [simRunning, setSimRunning] = useState(false)
+  const [simLoading, setSimLoading] = useState(false)
+  const socketRef = useRef(null)
   const toast = useToast()
   const intervalRef = useRef(null)
   const mapRef = useRef(null)
@@ -712,13 +751,62 @@ export default function GpsTracking() {
   useEffect(() => {
     load()
     vehicleAPI.getAll({ status: 'active' }).then(r => setVehicles(r.data.data)).catch(() => {})
+    gpsAPI.simStatus().then(r => setSimRunning(r.data.data.running)).catch(() => {})
   }, [])
 
+  // ── Live updates via Socket.io ─────────────────────────────────────────
+  // This is what makes the map actually "live": instead of waiting up to 5s
+  // for a poll, every push (real device or the simulator) lands here within
+  // a few hundred ms and updates the map immediately.
   useEffect(() => {
-    if (autoRefresh) { intervalRef.current = setInterval(load, 5000) }
-    else { clearInterval(intervalRef.current) }
+    const socket = io(SOCKET_URL, { withCredentials: true })
+    socketRef.current = socket
+
+    socket.on('connect', () => setSocketConnected(true))
+    socket.on('disconnect', () => setSocketConnected(false))
+
+    // Sent either as a full snapshot (simulator, one tick = whole fleet) or
+    // a partial update (a single driver's phone pushing their own location)
+    // — merge by vehicle id either way so neither case wipes the other
+    // vehicles off the map.
+    socket.on('fleet_update', (incoming) => {
+      setPositions(prev => {
+        const byId = {}
+        prev.forEach(p => { byId[p.vehicle.id] = p })
+        incoming.forEach(p => { byId[p.vehicle.id] = p })
+        return Object.values(byId)
+      })
+      setLastRefresh(new Date())
+    })
+
+    return () => socket.disconnect()
+  }, [])
+
+  // Keep a slow backup poll running (covers the rare case a socket event is
+  // missed, e.g. brief reconnect) — much lighter than the old 5s loop.
+  useEffect(() => {
+    intervalRef.current = setInterval(load, 30000)
     return () => clearInterval(intervalRef.current)
-  }, [autoRefresh])
+  }, [])
+
+  const toggleSimulator = async () => {
+    setSimLoading(true)
+    try {
+      if (simRunning) {
+        await gpsAPI.simStop()
+        setSimRunning(false)
+        toast.success('Live simulation stopped')
+      } else {
+        await gpsAPI.simStart()
+        setSimRunning(true)
+        toast.success('Live simulation started — vehicles will move automatically')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to toggle simulator')
+    } finally {
+      setSimLoading(false)
+    }
+  }
 
   const loadHistory = (vehicleId) => {
     setSelected(vehicleId)
@@ -764,12 +852,21 @@ export default function GpsTracking() {
         sub={`${positions.length} vehicles tracked · ${moving} moving · ${idle} idle${speeding > 0 ? ` · ${speeding} speeding` : ''}`}
       >
         <button
-          className={`btn btn-sm ${autoRefresh ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setAutoRefresh(!autoRefresh)}
-          title={autoRefresh ? 'Auto-refresh on (every 5s)' : 'Enable auto-refresh'}
+          className={`btn btn-sm ${socketConnected ? 'btn-primary' : 'btn-secondary'}`}
+          disabled
+          title={socketConnected ? 'Connected — receiving live updates' : 'Not connected'}
         >
-          {autoRefresh ? <Wifi size={13} /> : <WifiOff size={13} />}
-          {autoRefresh ? 'Live' : 'Manual'}
+          {socketConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
+          {socketConnected ? 'Live' : 'Offline'}
+        </button>
+        <button
+          className={`btn btn-sm ${simRunning ? 'btn-danger' : 'btn-primary'}`}
+          onClick={toggleSimulator}
+          disabled={simLoading}
+          title={simRunning ? 'Stop simulated GPS movement' : 'Start simulated GPS movement (stand-in for real devices)'}
+        >
+          {simRunning ? <Square size={13} /> : <Play size={13} />}
+          {simRunning ? 'Stop Simulation' : 'Start Simulation'}
         </button>
         {lastRefresh && (
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -876,9 +973,9 @@ export default function GpsTracking() {
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.88rem', fontWeight: 700, color: 'var(--green)' }}>
               Live Positions
             </span>
-            {autoRefresh && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--bg-canvas)', padding: '2px 7px', borderRadius: '100px' }}>
-                auto 5s
+            {socketConnected && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--green)', background: 'var(--bg-canvas)', padding: '2px 7px', borderRadius: '100px' }}>
+                live socket
               </span>
             )}
             <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>

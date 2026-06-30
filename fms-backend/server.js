@@ -7,10 +7,10 @@ const helmet     = require('helmet');
 const morgan     = require('morgan');
 const path       = require('path');
 
-const sessionMiddleware          = require('./src/config/session');
-const { sequelize }              = require('./src/models');
-const setupSocket                = require('./src/utils/socket');
-const { startAlertScheduler }    = require('./src/utils/alertChecker');
+const sessionMiddleware           = require('./src/config/session');
+const { sequelize }               = require('./src/models');
+const setupSocket                 = require('./src/utils/socket');
+const { startAlertScheduler }     = require('./src/utils/alertChecker');
 
 const app    = express();
 const server = http.createServer(app);
@@ -25,6 +25,19 @@ app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sessionMiddleware);
+
+// ── Disable HTTP caching on every /api response ──────────────────────────────
+// Without this, the browser was returning cached 304s for GET /api/trips
+// (and other endpoints) instead of re-running the route + session middleware,
+// which made driver-scoped queries (scopeDriverTo) appear to "not run" on
+// repeat requests even though the code was correct.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/auth',        require('./src/routes/auth.routes'));
@@ -45,9 +58,21 @@ app.use((req, res) => res.status(404).json({ success: false, message: 'Route not
 setupSocket(io);
 
 const PORT = process.env.PORT || 5000;
-sequelize.sync({ alter: true })
+
+// Use plain sync() for normal dev runs — it creates missing tables but
+// won't touch existing ones, so nodemon restarts can't keep stacking
+// duplicate indexes on unique columns (which hits MySQL's 64-key limit).
+// When you've actually changed a model and need columns/indexes updated,
+// run once with:  SYNC_ALTER=true npm run dev
+const syncOptions = process.env.SYNC_ALTER === 'true' ? { alter: true } : {};
+
+sequelize.sync(syncOptions)
   .then(() => {
     console.log('✅ MySQL connected & tables synced');
+    return sessionMiddleware.sessionStore.sync();
+  })
+  .then(() => {
+    console.log('✅ Session store ready');
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
       startAlertScheduler(io);

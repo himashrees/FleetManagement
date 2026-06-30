@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { CheckCircle2, Camera, Upload, MapPin, ArrowRight, Info, Play, Square, X, Clock } from 'lucide-react'
+import { CheckCircle2, Camera, Upload, MapPin, ArrowRight, Info, Play, Square, X, Clock, Satellite } from 'lucide-react'
 import { tripAPI } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { useLiveLocationTracker } from '../hooks/useLiveLocationTracker'
 
 function fileToB64(file, onDone, onError) {
   if (file.size > 5 * 1024 * 1024) { onError('File must be under 5 MB'); return }
@@ -112,6 +113,16 @@ export default function MyTrips() {
   }
 
   useEffect(() => { load() }, [])
+
+  // ── Live GPS tracking ─────────────────────────────────────────────────
+  // Pushes this driver's real phone/browser GPS location automatically,
+  // but only while their trip is actually in_progress — starts the moment
+  // they confirm "Start Trip" and stops the moment they end/cancel it.
+  const isTripActive = !!activeTrip && activeTrip.status === 'in_progress'
+  const { status: trackingStatus, error: trackingError } = useLiveLocationTracker(
+    activeTrip?.vehicle_id,
+    isTripActive
+  )
 
   // Opens the "Start Trip" popup — does NOT change status yet
   const openStartPopup = (trip) => {
@@ -307,6 +318,23 @@ export default function MyTrips() {
                 <div style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Vehicle</div>
                 <div style={{ fontSize: '0.83rem', fontWeight: 700, color: '#111827' }}>{trip.vehicle.registration_no}</div>
                 <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{trip.vehicle.make}</div>
+              </div>
+            </>
+          )}
+          {isOngoing && (
+            <>
+              <div style={{ width: 1, height: 34, background: '#e5e7eb' }} />
+              <div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>GPS Tracking</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', fontWeight: 700 }}>
+                  <Satellite size={13} color={trackingStatus === 'tracking' ? '#16a34a' : trackingStatus === 'error' || trackingStatus === 'unsupported' ? '#dc2626' : '#d97706'} />
+                  <span style={{ color: trackingStatus === 'tracking' ? '#16a34a' : trackingStatus === 'error' || trackingStatus === 'unsupported' ? '#dc2626' : '#d97706' }}>
+                    {trackingStatus === 'tracking' ? 'Live' : trackingStatus === 'requesting' ? 'Locating…' : trackingStatus === 'unsupported' ? 'Not supported' : trackingStatus === 'error' ? 'Error' : 'Idle'}
+                  </span>
+                </div>
+                {trackingError && (
+                  <div style={{ fontSize: '0.68rem', color: '#dc2626', maxWidth: 180 }}>{trackingError}</div>
+                )}
               </div>
             </>
           )}

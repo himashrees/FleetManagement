@@ -9,17 +9,43 @@ const tripInclude = [
   { model: Route, as: 'route', attributes: ['name','origin','destination'] },
 ];
 
+// Returns true if the requesting session is allowed to view/act on this trip:
+// admins and managers can touch any trip; drivers can only touch their own.
+const canAccessTrip = (req, trip) => {
+  const { role, driverId } = req.session.user || {};
+  if (role === 'admin' || role === 'manager') return true;
+  if (role === 'driver') return driverId != null && trip.driver_id === driverId;
+  return false;
+};
+
 // ── GET ALL ──────────────────────────────────────────────────────────────────
 exports.getAll = async (req, res) => {
   try {
-    const { status, driver_id, vehicle_id } = req.query;
+    const { status, vehicle_id } = req.query;
+    // req.scopedDriverId is set by scopeDriverTo middleware and is the
+    // reliable source of truth for driver-role scoping (Express 5 safe).
+    // Falls back to req.query.driver_id for admin/manager explicit filtering.
+    const driver_id = req.scopedDriverId || req.query.driver_id;
     const where = {};
     if (status)     where.status     = status;
     if (driver_id)  where.driver_id  = parseInt(driver_id);
     if (vehicle_id) where.vehicle_id = parseInt(vehicle_id);
 
     const trips = await Trip.findAll({ where, include: tripInclude, order: [['createdAt','DESC']] });
-    return res.json({ success: true, data: trips });
+
+    // Defensive fallback: if a trip has both odometer readings but distance_km
+    // wasn't computed/stored for some reason (e.g. data inserted outside the
+    // normal endTrip flow), derive it here so the UI never shows a blank
+    // when the underlying numbers are actually available.
+    const withDistance = trips.map(t => {
+      const json = t.toJSON();
+      if (json.distance_km == null && json.start_odometer != null && json.end_odometer != null) {
+        json.distance_km = Math.max(0, json.end_odometer - json.start_odometer);
+      }
+      return json;
+    });
+
+    return res.json({ success: true, data: withDistance });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -30,6 +56,9 @@ exports.getById = async (req, res) => {
   try {
     const trip = await Trip.findByPk(req.params.id, { include: tripInclude });
     if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+    if (!canAccessTrip(req, trip)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view this trip' });
+    }
     return res.json({ success: true, data: trip });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -56,10 +85,9 @@ exports.scheduleTrip = async (req, res) => {
       estimated_distance: estimated_distance ? parseFloat(estimated_distance) : null,
       cargo_type, cargo_weight: cargo_weight ? parseFloat(cargo_weight) : null,
       customer_name, customer_phone, pickup_address,
-      status: 'scheduled',   // ← key change: admin schedules, not starts
+      status: 'scheduled',
     });
 
-    // Notify the assigned driver
     const io = req.app.get('io');
     const driverRecord = await Driver.findByPk(driver_id, { include: [{ model: User, as: 'user', attributes: ['name'] }] });
     const vehicleRecord = await Vehicle.findByPk(vehicle_id);
@@ -106,6 +134,9 @@ exports.startTrip = async (req, res) => {
 
     const trip = await Trip.findByPk(trip_id);
     if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+    if (!canAccessTrip(req, trip)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to start this trip' });
+    }
     if (!['scheduled', 'planned'].includes(trip.status)) {
       return res.status(400).json({ success: false, message: `Trip cannot be started — current status: ${trip.status}` });
     }
@@ -121,14 +152,13 @@ exports.startTrip = async (req, res) => {
     await Driver.update({ status: 'on_trip' }, { where: { id: trip.driver_id } });
     await Vehicle.update({ on_trip: true }, { where: { id: trip.vehicle_id } });
 
-    // Notify admin/manager
     const io = req.app.get('io');
     const driverRecord = await Driver.findByPk(trip.driver_id, { include: [{ model: User, as: 'user', attributes: ['name'] }] });
 
     const alert = await Alert.create({
       vehicle_id: trip.vehicle_id,
+      driver_id: trip.driver_id,
       type: 'other',
-      title: `Trip Started: TRP${String(trip.id).padStart(3,'0')}`,
       message: `Driver ${driverRecord?.user?.name || `#${trip.driver_id}`} started trip from ${trip.start_location || '—'} to ${trip.end_location || '—'}. Start odometer: ${start_odometer} km at ${new Date().toLocaleTimeString('en-IN')}.`,
       severity: 'low',
       is_read: false,
@@ -148,6 +178,9 @@ exports.endTrip = async (req, res) => {
   try {
     const trip = await Trip.findByPk(req.params.id);
     if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+    if (!canAccessTrip(req, trip)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to end this trip' });
+    }
     if (trip.status !== 'in_progress') {
       return res.status(400).json({ success: false, message: 'Trip is not in progress' });
     }
@@ -188,28 +221,29 @@ exports.endTrip = async (req, res) => {
     await Driver.update({ status: 'available' }, { where: { id: trip.driver_id } });
     await Vehicle.update({ on_trip: false, odometer_km: parseFloat(end_odometer) }, { where: { id: trip.vehicle_id } });
 
-    // Auto-create fuel log if fuel was recorded
     if (filledFuel) {
       const litres       = parseFloat(fuel_used);
       const totalCost    = parseFloat(fuel_cost);
+      const vehicleRecord = await Vehicle.findByPk(trip.vehicle_id);
       await FuelLog.create({
         vehicle_id:     trip.vehicle_id,
         driver_id:      trip.driver_id,
         litres,
         cost_per_litre: litres > 0 ? (totalCost / litres).toFixed(2) : null,
         total_cost:     totalCost,
+        fuel_type:      vehicleRecord?.fuel_type || 'diesel',
         odometer_km:    parseFloat(end_odometer),
         station_name:   fuel_station || null,
         filled_at:      new Date(),
       });
     }
 
-    // Notify admin
     const io = req.app.get('io');
     const driverRecord = await Driver.findByPk(trip.driver_id, { include: [{ model: User, as: 'user', attributes: ['name'] }] });
 
     const alert = await Alert.create({
       vehicle_id: trip.vehicle_id,
+      driver_id: trip.driver_id,
       type: 'other',
       title: `Trip Completed: TRP${String(trip.id).padStart(3,'0')}`,
       message: `Driver ${driverRecord?.user?.name || `#${trip.driver_id}`} completed trip from ${trip.start_location || '—'} to ${trip.end_location || '—'}. Distance: ${Math.max(0, distance_km).toFixed(0)} km.`,
@@ -231,6 +265,9 @@ exports.cancelTrip = async (req, res) => {
   try {
     const trip = await Trip.findByPk(req.params.id);
     if (!trip) return res.status(404).json({ success: false, message: 'Trip not found' });
+    if (!canAccessTrip(req, trip)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to cancel this trip' });
+    }
     if (['completed','cancelled'].includes(trip.status)) {
       return res.status(400).json({ success: false, message: `Cannot cancel a ${trip.status} trip` });
     }

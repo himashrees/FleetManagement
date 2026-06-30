@@ -1,14 +1,157 @@
-import { useState, useEffect } from 'react'
-import { Truck, Users, Route, Wrench, AlertTriangle, Fuel } from 'lucide-react'
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { useState, useEffect, useRef } from 'react'
+import { Truck, Users, Route, Wrench, AlertTriangle, Fuel, TrendingUp } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid
+} from 'recharts'
 import { reportAPI, alertAPI, tripAPI, fuelAPI, vehicleAPI } from '../../services/api'
 import { LoadingState, EmptyState } from '../../components/Common'
 
 const PIE_COLORS = ['#1d4ed8', '#d97706', '#16a34a', '#7c3aed', '#dc2626']
 
 const tt = {
-  contentStyle: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
-  labelStyle: { color: '#0f172a', fontWeight: 600 },
+  contentStyle: {
+    background: '#fff', border: '1px solid #e2e8f0',
+    borderRadius: '10px', fontSize: '12px',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+    padding: '8px 14px',
+  },
+  labelStyle: { color: '#0f172a', fontWeight: 700, marginBottom: 4 },
+  cursor: { fill: 'rgba(29,78,216,0.04)' },
+}
+
+/* ── Animated counter hook ── */
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0)
+  const raf = useRef(null)
+  useEffect(() => {
+    if (target == null || isNaN(Number(target))) { setVal(target); return }
+    const num = Number(target)
+    const start = performance.now()
+    const tick = now => {
+      const p = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setVal(Math.round(eased * num))
+      if (p < 1) raf.current = requestAnimationFrame(tick)
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+  }, [target, duration])
+  return val
+}
+
+/* ── Animated stat card ── */
+function StatCard({ label, rawValue, sub, icon: Icon, color, prefix = '' }) {
+  const [visible, setVisible] = useState(false)
+  const ref = useRef(null)
+  const numeric = !isNaN(Number(String(rawValue).replace(/[^0-9.]/g, '')))
+    ? Number(String(rawValue).replace(/[^0-9.]/g, ''))
+    : null
+  const counted = useCountUp(visible ? (numeric ?? 0) : 0, 900)
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true) }, { threshold: 0.1 })
+    if (ref.current) obs.observe(ref.current)
+    return () => obs.disconnect()
+  }, [])
+
+  const displayVal = numeric !== null ? `${prefix}${counted}` : rawValue
+
+  const glowMap = {
+    blue: 'rgba(29,78,216,0.18)',
+    green: 'rgba(22,163,74,0.18)',
+    amber: 'rgba(217,119,6,0.18)',
+    red: 'rgba(220,38,38,0.18)',
+  }
+
+  return (
+    <div ref={ref} className={`stat-card ${color}`} style={{
+      padding: '16px 14px',
+      transition: 'box-shadow 0.25s, transform 0.25s',
+      cursor: 'default',
+    }}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)'
+        e.currentTarget.style.boxShadow = `0 12px 28px ${glowMap[color] || 'rgba(0,0,0,0.1)'}, 0 2px 6px rgba(0,0,0,0.06)`
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'translateY(0) scale(1)'
+        e.currentTarget.style.boxShadow = ''
+      }}
+    >
+      {/* animated icon ring */}
+      <div className={`stat-icon ${color}`} style={{
+        fontSize: 16, width: 38, height: 38,
+        position: 'relative', overflow: 'visible',
+      }}>
+        <Icon size={16} />
+        <span style={{
+          position: 'absolute', inset: -4,
+          borderRadius: '50%',
+          border: `2px solid ${glowMap[color]}`,
+          animation: 'pulse-ring 2.4s ease-in-out infinite',
+          pointerEvents: 'none',
+        }} />
+      </div>
+      <div className="stat-label" style={{ fontSize: '0.7rem' }}>{label}</div>
+      <div className="stat-value" style={{ fontSize: '1.5rem' }}>{displayVal ?? '—'}</div>
+      <div className="stat-sub">{sub}</div>
+    </div>
+  )
+}
+
+/* ── Custom Fuel Tooltip ── */
+function FuelTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: 10, padding: '8px 14px',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+      fontSize: 12,
+    }}>
+      <p style={{ fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{label}</p>
+      <p style={{ color: '#1d4ed8', fontWeight: 600 }}>⛽ {payload[0].value} L</p>
+    </div>
+  )
+}
+
+/* ── Custom Trips Tooltip ── */
+function TripsTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: 10, padding: '8px 14px',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+      fontSize: 12,
+    }}>
+      <p style={{ fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{label}</p>
+      <p style={{ color: '#16a34a', fontWeight: 600 }}>🚛 {payload[0].value} trip{payload[0].value !== 1 ? 's' : ''}</p>
+    </div>
+  )
+}
+
+/* ── Custom Bar shape with rounded top + gradient ── */
+function GradientBar(props) {
+  const { x, y, width, height, value } = props
+  if (!value) return null
+  const r = 5
+  return (
+    <g>
+      <defs>
+        <linearGradient id={`barGrad-${x}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#16a34a" stopOpacity={1} />
+          <stop offset="100%" stopColor="#4ade80" stopOpacity={0.7} />
+        </linearGradient>
+      </defs>
+      <path
+        d={`M${x},${y + r} Q${x},${y} ${x + r},${y} L${x + width - r},${y} Q${x + width},${y} ${x + width},${y + r} L${x + width},${y + height} L${x},${y + height} Z`}
+        fill={`url(#barGrad-${x})`}
+        filter="drop-shadow(0 2px 4px rgba(22,163,74,0.3))"
+      />
+    </g>
+  )
 }
 
 export default function AdminDashboard() {
@@ -30,7 +173,7 @@ export default function AdminDashboard() {
       .then(([s, a, t, f, v]) => {
         setSummary(s.data.data)
         setAlerts(a.data.data?.slice(0, 5) || [])
-        setTrips(t.data.data   || [])
+        setTrips(t.data.data || [])
         setFuelLogs(f.data.data || [])
         setVehicles(v.data.data || [])
       })
@@ -38,32 +181,45 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  /* ── Real chart data ── */
+  /* ── Fuel by day (current week) ── */
+  const fuelDayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const startOfWeek = new Date()
+  const dow = (startOfWeek.getDay() + 6) % 7 // Mon=0 ... Sun=6
+  startOfWeek.setDate(startOfWeek.getDate() - dow)
+  startOfWeek.setHours(0, 0, 0, 0)
+  const endOfWeek = new Date(startOfWeek)
+  endOfWeek.setDate(endOfWeek.getDate() + 7)
 
-  // Fuel by month from actual logs
-  const fuelByMonth = {}
+  const fuelByDay = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 }
   fuelLogs.forEach(f => {
     if (!f.filled_at) return
-    const month = new Date(f.filled_at).toLocaleString('en-IN', { month: 'short' })
-    fuelByMonth[month] = (fuelByMonth[month] || 0) + (f.litres || 0)
+    const d = new Date(f.filled_at)
+    if (d < startOfWeek || d >= endOfWeek) return
+    const day = d.toLocaleString('en-US', { weekday: 'short' })
+    if (fuelByDay[day] !== undefined) fuelByDay[day] += (f.litres || 0)
   })
-  const realFuelData = Object.entries(fuelByMonth).map(([month, litres]) => ({ month, litres: parseFloat(litres.toFixed(1)) }))
+  const realFuelData = fuelDayOrder.map(day => ({
+    month: day, litres: parseFloat(fuelByDay[day].toFixed(1))
+  }))
 
-  // Trips by day of week from actual trips
+  /* ── Trips by day of week (current week only) ── */
   const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   const tripsByDay = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 }
   trips.forEach(t => {
     if (!t.start_time) return
-    const day = new Date(t.start_time).toLocaleString('en-US', { weekday: 'short' })
+    const d = new Date(t.start_time)
+    if (d < startOfWeek || d >= endOfWeek) return
+    const day = d.toLocaleString('en-US', { weekday: 'short' })
     if (tripsByDay[day] !== undefined) tripsByDay[day]++
   })
   const realTripsData = dayOrder.map(day => ({ day, trips: tripsByDay[day] }))
+  const maxTrips = Math.max(...realTripsData.map(d => d.trips), 1)
   const hasAnyTrips = trips.length > 0
 
-  // Fleet status pie from real vehicles
+  /* ── Fleet status pie ── */
   const statusCount = { Active: 0, Maintenance: 0, Inactive: 0, Retired: 0 }
   vehicles.forEach(v => {
-    if (v.status === 'active')      statusCount.Active++
+    if (v.status === 'active')           statusCount.Active++
     else if (v.status === 'maintenance') statusCount.Maintenance++
     else if (v.status === 'inactive')    statusCount.Inactive++
     else if (v.status === 'retired')     statusCount.Retired++
@@ -72,12 +228,12 @@ export default function AdminDashboard() {
     .filter(([, val]) => val > 0)
     .map(([name, value]) => ({ name, value }))
 
-  // Fuel cost this month
+  /* ── Fuel cost this month ── */
   const fuelCostMonth = fuelLogs
     .filter(f => f.filled_at && new Date(f.filled_at) >= new Date(new Date().setDate(1)))
     .reduce((s, f) => s + parseFloat(f.total_cost || 0), 0)
 
-  // Top fuel consuming vehicles
+  /* ── Top fuel consuming vehicles ── */
   const vehicleFuelMap = {}
   fuelLogs.forEach(f => {
     vehicleFuelMap[f.vehicle_id] = (vehicleFuelMap[f.vehicle_id] || 0) + (f.litres || 0)
@@ -94,16 +250,72 @@ export default function AdminDashboard() {
   const severityBadge = { low: 'badge-blue', medium: 'badge-amber', high: 'badge-red', critical: 'badge-red' }
 
   const stats = summary ? [
-    { label: 'Total Vehicles',    value: summary.totalVehicles,    sub: `${summary.activeVehicles} active`,      icon: Truck,         color: 'blue'  },
-    { label: 'Total Drivers',     value: summary.totalDrivers,     sub: `${summary.availableDrivers} available`,  icon: Users,         color: 'blue'  },
-    { label: 'Active Trips',      value: trips.filter(t => t.status === 'in_progress').length, sub: 'right now', icon: Route,         color: 'green' },
-    { label: 'Fuel Cost (Month)', value: `₹${fuelCostMonth.toFixed(0)}`, sub: 'this month',                      icon: Fuel,          color: 'amber' },
-    { label: 'Maintenance Due',   value: summary.maintenanceDue,   sub: 'vehicles overdue',                       icon: Wrench,        color: summary.maintenanceDue > 0 ? 'red' : 'green' },
-    { label: 'Alerts',            value: alerts.length,            sub: 'unread',                                 icon: AlertTriangle, color: alerts.length > 0 ? 'red' : 'green' },
+    { label: 'Total Vehicles',    rawValue: summary.totalVehicles,    sub: `${summary.activeVehicles} active`,      icon: Truck,         color: 'blue'  },
+    { label: 'Total Drivers',     rawValue: summary.totalDrivers,     sub: `${summary.availableDrivers} available`,  icon: Users,         color: 'blue'  },
+    { label: 'Active Trips',      rawValue: trips.filter(t => t.status === 'in_progress').length, sub: 'right now', icon: Route,         color: 'green' },
+    { label: 'Fuel Cost (Month)', rawValue: fuelCostMonth.toFixed(0), sub: 'this month', prefix: '₹',               icon: Fuel,          color: 'amber' },
+    { label: 'Maintenance Due',   rawValue: summary.maintenanceDue,   sub: 'vehicles overdue',                       icon: Wrench,        color: summary.maintenanceDue > 0 ? 'red' : 'green' },
+    { label: 'Alerts',            rawValue: alerts.length,            sub: 'unread',                                 icon: AlertTriangle, color: alerts.length > 0 ? 'red' : 'green' },
   ] : []
 
   return (
     <div className="page-enter">
+      {/* pulse-ring keyframe injected once */}
+      <style>{`
+        @keyframes pulse-ring {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.5); opacity: 0; }
+          100% { transform: scale(1.5); opacity: 0; }
+        }
+        @keyframes bar-rise {
+          from { transform: scaleY(0); transform-origin: bottom; }
+          to   { transform: scaleY(1); transform-origin: bottom; }
+        }
+        @keyframes badge-pop {
+          0%   { transform: scale(0.6); opacity: 0; }
+          60%  { transform: scale(1.12); opacity: 1; }
+          100% { transform: scale(1); }
+        }
+        @keyframes shimmer-sweep {
+          0%   { background-position: -150% 0; }
+          100% { background-position: 250% 0; }
+        }
+        .chart-card {
+          animation: none;
+          transition: transform 0.28s cubic-bezier(0.34,1.3,0.64,1), box-shadow 0.28s ease, border-color 0.28s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .chart-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 16px 32px rgba(15,23,42,0.1), 0 4px 10px rgba(15,23,42,0.06);
+          border-color: rgba(29,78,216,0.25);
+        }
+        .chart-card::after {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0; height: 2px;
+          background: linear-gradient(90deg, transparent, rgba(29,78,216,0.5), transparent);
+          background-size: 200% 100%;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        .chart-card:hover::after {
+          opacity: 1;
+          animation: shimmer-sweep 1.6s linear infinite;
+        }
+        .chart-card .recharts-bar-rectangle {
+          transition: filter 0.18s ease, transform 0.18s ease;
+          transform-origin: bottom;
+        }
+        .chart-card .recharts-bar-rectangle:hover {
+          filter: brightness(1.12);
+          transform: scaleY(1.015);
+          cursor: pointer;
+        }
+        .chart-badge-pop { animation: badge-pop 0.45s cubic-bezier(0.34,1.3,0.64,1); }
+      `}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
@@ -114,7 +326,6 @@ export default function AdminDashboard() {
             Complete fleet overview — every vehicle, driver, and metric
           </p>
         </div>
-
       </div>
 
       {loading ? <LoadingState label="Fetching fleet summary…" /> : (
@@ -122,69 +333,132 @@ export default function AdminDashboard() {
           {/* ── 6 Stat Cards ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
             {stats.map((s, i) => (
-              <div key={i} className={`stat-card ${s.color}`} style={{ padding: '16px 14px' }}>
-                <div className={`stat-icon ${s.color}`}><s.icon size={16} /></div>
-                <div className="stat-label" style={{ fontSize: '0.7rem' }}>{s.label}</div>
-                <div className="stat-value" style={{ fontSize: '1.5rem' }}>{s.value ?? '—'}</div>
-                <div className="stat-sub">{s.sub}</div>
-              </div>
+              <StatCard key={i} {...s} />
             ))}
           </div>
 
           {/* ── Charts Row ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
 
-            {/* Fuel Consumption — real data */}
+            {/* ── Fuel Consumption — improved ── */}
             <div className="chart-card">
-              <div className="chart-header">
+              <div className="chart-header" style={{ marginBottom: 4 }}>
                 <div>
-                  <div className="chart-title">Fuel Consumption</div>
-                  <div className="chart-sub">litres / month</div>
+                  <div className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Fuel size={15} style={{ color: '#1d4ed8' }} />
+                    Fuel Consumption
+                  </div>
+                  <div className="chart-sub">litres per day · current week</div>
                 </div>
+                {realFuelData.some(d => d.litres > 0) && (
+                  <div className="chart-badge-pop" style={{
+                    fontSize: '0.75rem', fontWeight: 700,
+                    background: 'var(--brand-light)', color: 'var(--brand)',
+                    padding: '3px 10px', borderRadius: 99,
+                  }}>
+                    {realFuelData.reduce((s, d) => s + d.litres, 0).toFixed(0)} L total
+                  </div>
+                )}
               </div>
-              {realFuelData.length === 0 ? (
-                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
+
+              {!realFuelData.some(d => d.litres > 0) ? (
+                <div style={{ height: 190, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
                   <Fuel size={28} style={{ opacity: 0.25 }} />
                   <p style={{ fontSize: '0.83rem' }}>No fuel logs yet — add a fill-up to see the chart</p>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <AreaChart data={realFuelData}>
+                <ResponsiveContainer width="100%" height={190}>
+                  <BarChart data={realFuelData} barSize={32} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="fuelGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#1d4ed8" stopOpacity={0.25} />
-                        <stop offset="95%" stopColor="#1d4ed8" stopOpacity={0} />
-                      </linearGradient>
+                      {realFuelData.map((d, i) => (
+                        <linearGradient key={i} id={`fuelBar${i}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%"   stopColor="#1d4ed8" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.75} />
+                        </linearGradient>
+                      ))}
                     </defs>
-                    <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip {...tt} itemStyle={{ color: '#1d4ed8' }} />
-                    <Area type="monotone" dataKey="litres" stroke="#1d4ed8" fill="url(#fuelGrad)" strokeWidth={2} />
-                  </AreaChart>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                      axisLine={false} tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      axisLine={false} tickLine={false}
+                      tickFormatter={v => `${v}L`}
+                    />
+                    <Tooltip content={<FuelTooltip />} cursor={{ fill: 'rgba(29,78,216,0.05)', radius: 6 }} />
+                    <Bar dataKey="litres" radius={[6, 6, 0, 0]} animationDuration={900} animationEasing="ease-out">
+                      {realFuelData.map((_, i) => (
+                        <Cell key={i} fill={`url(#fuelBar${i})`}
+                          style={{ filter: 'drop-shadow(0 2px 5px rgba(29,78,216,0.3))' }}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
 
-            {/* Trips This Week — real data */}
+            {/* ── Trips This Week — improved ── */}
             <div className="chart-card">
-              <div className="chart-header">
+              <div className="chart-header" style={{ marginBottom: 4 }}>
                 <div>
-                  <div className="chart-title">Trips This Week</div>
-                  <div className="chart-sub">daily count</div>
+                  <div className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <TrendingUp size={15} style={{ color: '#16a34a' }} />
+                    Trips This Week
+                  </div>
+                  <div className="chart-sub">daily count · current week</div>
                 </div>
+                {hasAnyTrips && (
+                  <div className="chart-badge-pop" style={{
+                    fontSize: '0.75rem', fontWeight: 700,
+                    background: 'var(--green-bg)', color: 'var(--green)',
+                    padding: '3px 10px', borderRadius: 99,
+                  }}>
+                    {trips.length} total trips
+                  </div>
+                )}
               </div>
+
               {!hasAnyTrips ? (
-                <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
+                <div style={{ height: 190, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8, color: 'var(--text-muted)' }}>
                   <Route size={28} style={{ opacity: 0.25 }} />
                   <p style={{ fontSize: '0.83rem' }}>No trips recorded yet — start a trip to see the chart</p>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={realTripsData} barSize={22}>
-                    <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip {...tt} itemStyle={{ color: '#16a34a' }} />
-                    <Bar dataKey="trips" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                <ResponsiveContainer width="100%" height={190}>
+                  <BarChart data={realTripsData} barSize={28} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                    <defs>
+                      {realTripsData.map((d, i) => (
+                        <linearGradient key={i} id={`tripGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%"   stopColor={d.trips === maxTrips ? '#16a34a' : '#4ade80'} stopOpacity={1} />
+                          <stop offset="100%" stopColor={d.trips === maxTrips ? '#16a34a' : '#86efac'} stopOpacity={0.7} />
+                        </linearGradient>
+                      ))}
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                      axisLine={false} tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      axisLine={false} tickLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip content={<TripsTooltip />} cursor={{ fill: 'rgba(22,163,74,0.05)', radius: 6 }} />
+                    <Bar dataKey="trips" radius={[6, 6, 0, 0]} animationDuration={900} animationEasing="ease-out">
+                      {realTripsData.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill={entry.trips === maxTrips ? '#16a34a' : '#86efac'}
+                          style={{ filter: entry.trips === maxTrips ? 'drop-shadow(0 3px 6px rgba(22,163,74,0.4))' : 'none' }}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -192,37 +466,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* ── Bottom Row ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr', gap: 16 }}>
-
-            {/* Fleet Status Pie — real data */}
-            <div className="chart-card">
-              <div className="chart-title" style={{ marginBottom: 8 }}>Fleet Status</div>
-              {pieData.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.83rem' }}>
-                  <Truck size={28} style={{ opacity: 0.25, marginBottom: 8 }} />
-                  <p>No vehicles added yet</p>
-                </div>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={68} paddingAngle={3} dataKey="value">
-                        {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip {...tt} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 6 }}>
-                    {pieData.map((d, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: PIE_COLORS[i] }} />
-                        {d.name}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
 
             {/* Recent Trips */}
             <div className="chart-card">
@@ -239,7 +483,11 @@ export default function AdminDashboard() {
                       padding: '9px 12px', background: 'var(--bg-canvas)',
                       borderRadius: 'var(--radius)', display: 'flex',
                       justifyContent: 'space-between', alignItems: 'center',
-                    }}>
+                      transition: 'background 0.15s',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-canvas)'}
+                    >
                       <div>
                         <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)', fontWeight: 600, fontSize: '0.8rem' }}>
                           #{t.id}
@@ -262,10 +510,12 @@ export default function AdminDashboard() {
 
             {/* Top Fuel + Alerts */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
               {/* Top Fuel Consuming */}
               <div className="chart-card" style={{ flex: 1 }}>
-                <div className="chart-title" style={{ marginBottom: 10 }}>Top Fuel Consuming</div>
+                <div className="chart-title" style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Fuel size={13} style={{ color: 'var(--amber)' }} />
+                  Top Fuel Consuming
+                </div>
                 {topFuelVehicles.length === 0 ? (
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '16px 0' }}>
                     No fuel data yet

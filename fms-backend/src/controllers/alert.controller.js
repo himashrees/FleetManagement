@@ -39,7 +39,19 @@ exports.getAll = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const alert = await Alert.create(req.body);
+    const payload = { ...req.body };
+
+    // If the alert is tied to a driver but no vehicle was specified
+    // (e.g. driver-submitted issue reports), fall back to the
+    // driver's currently assigned vehicle so it still shows up in the table.
+    if (!payload.vehicle_id && payload.driver_id) {
+      const driver = await Driver.findByPk(payload.driver_id);
+      if (driver?.assigned_vehicle_id) {
+        payload.vehicle_id = driver.assigned_vehicle_id;
+      }
+    }
+
+    const alert = await Alert.create(payload);
     const io = req.app.get('io');
     if (io) io.emit('new_alert', alert);
     return res.status(201).json({ success: true, data: alert });

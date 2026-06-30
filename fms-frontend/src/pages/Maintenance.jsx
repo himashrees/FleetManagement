@@ -64,20 +64,45 @@ function PriorityBadge({ priority }) {
 
 function StatCard({ icon: Icon, label, value, color = 'blue', sub }) {
   const colors = {
-    blue:  { bg: '#eff6ff', icon: '#3b82f6', border: '#bfdbfe' },
-    amber: { bg: '#fff7ed', icon: '#f59e0b', border: '#fed7aa' },
-    red:   { bg: '#fef2f2', icon: '#ef4444', border: '#fecaca' },
-    green: { bg: '#f0fdf4', icon: '#22c55e', border: '#bbf7d0' },
+    blue:  { bg: '#eff6ff', icon: '#3b82f6', border: '#bfdbfe', glow: 'rgba(59,130,246,0.28)' },
+    amber: { bg: '#fff7ed', icon: '#f59e0b', border: '#fed7aa', glow: 'rgba(245,158,11,0.28)' },
+    red:   { bg: '#fef2f2', icon: '#ef4444', border: '#fecaca', glow: 'rgba(239,68,68,0.28)'  },
+    green: { bg: '#f0fdf4', icon: '#22c55e', border: '#bbf7d0', glow: 'rgba(34,197,94,0.28)'  },
   }
   const c = colors[color]
   return (
-    <div className="stat-card" style={{ borderTop: `3px solid ${c.icon}` }}>
-      <div style={{
-        width: 38, height: 38, borderRadius: 10, background: c.bg,
-        border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', marginBottom: 12, color: c.icon,
-      }}>
-        <Icon size={18} />
+    <div
+      className="stat-card kpi-card"
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${c.glow}, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${c.glow}`; e.currentTarget.style.transform = 'translateY(0)' }}
+      style={{
+        borderTop: `3px solid ${c.icon}`,
+        boxShadow: `0 2px 8px ${c.glow}`,
+        transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
+      }}
+    >
+      <style>{`
+        @keyframes kpi-ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.8); opacity: 0;   }
+          100% { transform: scale(1);   opacity: 0;   }
+        }
+        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
+        .kpi-card:hover .kpi-icon { transform: scale(1.14) rotate(-6deg); }
+        .kpi-icon { transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+      `}</style>
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <div className="kpi-icon" style={{
+          width: 38, height: 38, borderRadius: 10, background: c.bg,
+          border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', marginBottom: 12, color: c.icon, position: 'relative', zIndex: 1,
+        }}>
+          <Icon size={18} />
+        </div>
+        <div className="kpi-ring" style={{
+          position: 'absolute', inset: -4, borderRadius: 10,
+          border: `2px solid ${c.icon}`, opacity: 0, pointerEvents: 'none',
+        }} />
       </div>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>

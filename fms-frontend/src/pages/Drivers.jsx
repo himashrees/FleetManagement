@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, RefreshCw, User, Car, Camera, Eye, ArrowLeft, Phone, MapPin, Shield, Clock } from 'lucide-react'
+import { Pencil, Trash2, RefreshCw, User, Camera, Eye, ArrowLeft, Users, CheckCircle2, Navigation2, UserMinus, Search, UserPlus, Plus } from 'lucide-react'
 import { driverAPI, vehicleAPI, tripAPI, documentAPI } from '../services/api'
 import { mlDriverAPI } from '../services/mlApi'
 import { useToast } from '../context/ToastContext'
@@ -17,7 +17,8 @@ const AVAIL_BADGE = { available: 'badge-green', on_trip: 'badge-blue', off_duty:
 
 const EMPTY = {
   name: '', email: '', phone: '',
-  license_number: '', license_expiry: '', license_type: 'LMV',
+  dob: '', gender: '',
+  license_number: '',
   experience_years: 0, status: 'available',
   address: '', emergency_contact: '', assigned_vehicle_id: '', photo_url: '',
 }
@@ -74,8 +75,6 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
   const TABS = [
     { id: 'trips',     label: 'Trips' },
     { id: 'documents', label: 'Documents' },
-    { id: 'license',   label: 'License History' },
-    { id: 'emergency', label: 'Emergency Contact' },
   ]
 
   return (
@@ -111,11 +110,10 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
               {[
                 { label: 'Status', value: (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <span className={`badge ${s.cls}`} style={{ fontSize: 11 }}>{s.label}</span>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, display: 'inline-block' }} />
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, display: 'inline-block', flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: s.dot }}>{s.label}</span>
                   </span>
                 )},
-                { label: 'Availability', value: <span className={`badge ${s.cls}`} style={{ fontSize: 11 }}>{s.label}</span> },
                 { label: 'Total Trips',  value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.length}</span> },
                 { label: 'Date Joined',  value: <span style={{ fontSize: 12 }}>{fmtDate(driver.createdAt)}</span> },
               ].map(({ label, value }) => (
@@ -133,10 +131,9 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 40px' }}>
               {[
                 { label: 'Driver Name',      value: driver.user?.name },
-                { label: 'Date of Birth',    value: '—' },
+                { label: 'Date of Birth',    value: fmtDate(driver.dob) },
+                { label: 'Gender',           value: driver.gender ? driver.gender.charAt(0).toUpperCase() + driver.gender.slice(1) : undefined },
                 { label: 'License Number',   value: driver.license_number, mono: true },
-                { label: 'License Type',     value: driver.license_type },
-                { label: 'License Expiry',   value: fmtDate(driver.license_expiry) },
                 { label: 'Phone Number',     value: driver.user?.phone },
                 { label: 'Email',            value: driver.user?.email },
                 { label: 'Address',          value: driver.address },
@@ -201,7 +198,7 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
                 ? <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No documents uploaded</div>
                 : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead><tr style={{ background: 'var(--bg-canvas)' }}>
-                      {['#', 'Title', 'Type', 'Expiry Date', 'Status'].map(h => (
+                      {['#', 'Title', 'Expiry Date', 'Status'].map(h => (
                         <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontSize: 12 }}>{h}</th>
                       ))}
                     </tr></thead>
@@ -214,7 +211,6 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
                           <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
                             <td style={{ padding: '9px 12px', color: 'var(--text-muted)' }}>{i + 1}</td>
                             <td style={{ padding: '9px 12px', fontWeight: 500 }}>{d.title}</td>
-                            <td style={{ padding: '9px 12px', textTransform: 'capitalize' }}>{d.document_type?.replace('_', ' ')}</td>
                             <td style={{ padding: '9px 12px', color: ec }}>{fmtDate(d.expiry_date)}</td>
                             <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: ec + '20', color: ec }}>{es}</span></td>
                           </tr>
@@ -224,43 +220,6 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
                   </table>
           )}
 
-          {/* LICENSE HISTORY */}
-          {tab === 'license' && (
-            <div style={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                { label: 'License Number',    value: driver.license_number,  mono: true },
-                { label: 'License Type',      value: driver.license_type },
-                { label: 'License Expiry',    value: fmtDate(driver.license_expiry) },
-                { label: 'Experience',        value: `${driver.experience_years || 0} years` },
-                { label: 'Current Status',    value: s.label },
-                { label: 'Assigned Vehicle',  value: driver.assignedVehicle?.registration_no
-                    ? `${driver.assignedVehicle.registration_no} · ${driver.assignedVehicle.make || ''}`
-                    : '—' },
-              ].map(({ label, value, mono }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-canvas)', borderRadius: 'var(--radius)', fontSize: 13 }}>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontFamily: mono ? 'var(--font-mono)' : undefined }}>{value || '—'}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* EMERGENCY CONTACT */}
-          {tab === 'emergency' && (
-            <div style={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                { label: 'Emergency Contact', value: driver.emergency_contact },
-                { label: 'Driver Phone',      value: driver.user?.phone },
-                { label: 'Driver Email',      value: driver.user?.email },
-                { label: 'Home Address',      value: driver.address },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 14px', background: 'var(--bg-canvas)', borderRadius: 'var(--radius)', fontSize: 13, gap: 12 }}>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 500, flexShrink: 0 }}>{label}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right' }}>{value || '—'}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -351,13 +310,12 @@ export default function Drivers() {
 
   const openAdd  = () => { setForm(EMPTY); setPhotoPreview(null); setSelected(null); setModal('add') }
   const openEdit = (d) => {
-    setForm({ ...d, name: d.user?.name || '', email: d.user?.email || '', phone: d.user?.phone || '', assigned_vehicle_id: d.assigned_vehicle_id || '', photo_url: d.photo_url || '' })
+    setForm({ ...d, name: d.user?.name || '', email: d.user?.email || '', phone: d.user?.phone || '', assigned_vehicle_id: d.assigned_vehicle_id || '', photo_url: d.photo_url || '', dob: d.dob || '', gender: d.gender || '', license_number: d.license_number || '' })
     setSelected(d); setPhotoPreview(d.photo_url || null); setModal('edit')
   }
   const openDelete = (d) => { setSelected(d); setModal('delete') }
 
   const handleSave = async () => {
-    if (!form.license_number)           { toast.error('License number is required'); return }
     if (modal === 'add' && !form.name)  { toast.error('Driver name is required');    return }
     setSaving(true)
     try {
@@ -366,6 +324,9 @@ export default function Drivers() {
       if (!payload.email)               delete payload.email
       if (!payload.phone)               delete payload.phone
       if (!payload.photo_url)           delete payload.photo_url
+      // Null out empty date strings — MySQL rejects empty string for DATEONLY columns
+      if (!payload.dob)                 payload.dob            = null
+      if (!payload.joining_date)        payload.joining_date   = null
       delete payload.id; delete payload.user; delete payload.assignedVehicle
       delete payload.createdAt; delete payload.updatedAt
       if (modal === 'add') { await driverAPI.create(payload); toast.success('Driver added') }
@@ -404,7 +365,7 @@ export default function Drivers() {
     <div className="page-enter">
 
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
             Driver <span style={{ color: 'var(--brand)' }}>Management</span>
@@ -413,33 +374,88 @@ export default function Drivers() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-icon" onClick={load}><RefreshCw size={14} /></button>
-          <button className="btn btn-primary" onClick={openAdd}><Plus size={14} /> + Add Driver</button>
+          <button className="btn btn-primary" onClick={openAdd}><Plus size={15} /> Add Driver</button>
         </div>
       </div>
 
       {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+      <style>{`
+        @keyframes drv-ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.8); opacity: 0;   }
+          100% { transform: scale(1);   opacity: 0;   }
+        }
+        .drv-kpi-card {
+          position: relative; overflow: hidden; cursor: default;
+          border-radius: var(--radius-lg);
+          transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease;
+        }
+        .drv-kpi-card:hover { transform: translateY(-5px) scale(1.025); }
+        .drv-kpi-card:hover .drv-kpi-ring { animation: drv-ring-pulse 1.6s ease-in-out infinite; }
+        .drv-kpi-card:hover .drv-kpi-icon { transform: scale(1.14) rotate(-6deg); }
+        .drv-kpi-card:hover .drv-kpi-topbar { height: 4px; opacity: 1; }
+        .drv-kpi-icon    { transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+        .drv-kpi-topbar  { transition: height 0.2s ease, opacity 0.2s ease; }
+      `}</style>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Total Drivers', value: total,    icon: '👥', color: 'var(--brand)', bg: 'var(--brand-light)', sub: 'All Drivers' },
-          { label: 'Active',        value: active,   icon: '✅', color: 'var(--green)', bg: 'var(--green-bg)',   sub: 'Available' },
-          { label: 'On Trip',       value: onTrip,   icon: '🚗', color: 'var(--blue)',  bg: 'var(--blue-bg)',    sub: 'Currently on Trip' },
-          { label: 'Inactive',      value: inactive, icon: '⚠️', color: 'var(--amber)', bg: 'var(--amber-bg)',   sub: 'Not Available' },
+          { label: 'Total Drivers', value: total,    Icon: Users,        sub: 'All Drivers',       accent: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', glow: 'rgba(29,78,216,0.22)'  },
+          { label: 'Active',        value: active,   Icon: CheckCircle2, sub: 'Available',         accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.22)'  },
+          { label: 'On Trip',       value: onTrip,   Icon: Navigation2,  sub: 'Currently on Trip', accent: '#0284c7', bg: '#e0f2fe', border: '#bae6fd', glow: 'rgba(2,132,199,0.22)'  },
+          { label: 'Inactive',      value: inactive, Icon: UserMinus,    sub: 'Not Available',     accent: '#d97706', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(217,119,6,0.22)'  },
         ].map(s => (
-          <div key={s.label} className="stat-card" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', flexShrink: 0 }}>{s.icon}</div>
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.7rem', fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginTop: 3 }}>{s.label}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{s.sub}</div>
+          <div key={s.label} className="drv-kpi-card" style={{
+            background: '#ffffff',
+            border: `1px solid ${s.border}`,
+            boxShadow: `0 2px 8px ${s.glow}`,
+            padding: '20px 20px 18px',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 40px ${s.glow}, 0 3px 10px rgba(0,0,0,0.07)` }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${s.glow}` }}
+          >
+            {/* diagonal bg wash */}
+            <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${s.bg}80 0%, transparent 60%)`, pointerEvents: 'none' }} />
+            {/* top accent stripe — thickens on hover via CSS */}
+            <div className="drv-kpi-topbar" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, opacity: 0.9, background: `linear-gradient(90deg, ${s.accent}, ${s.accent}55)` }} />
+
+            {/* icon + value row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <div className="drv-kpi-icon" style={{
+                  width: 46, height: 46, borderRadius: 'var(--radius-md)',
+                  background: s.bg, border: `1.5px solid ${s.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: s.accent, boxShadow: `0 3px 10px ${s.glow}`,
+                  position: 'relative', zIndex: 1,
+                }}>
+                  <s.Icon size={20} strokeWidth={2} />
+                </div>
+                <div className="drv-kpi-ring" style={{
+                  position: 'absolute', inset: -5, borderRadius: 'var(--radius-md)',
+                  border: `2px solid ${s.accent}`, opacity: 0, pointerEvents: 'none',
+                }} />
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)', fontSize: '2.4rem',
+                fontWeight: 800, color: s.accent, lineHeight: 1,
+                letterSpacing: '-0.04em', position: 'relative',
+              }}>{s.value}</div>
+            </div>
+
+            {/* label + sub */}
+            <div style={{ position: 'relative' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 700, color: s.accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{s.label}</div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 400 }}>{s.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Search + filter */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>
-          <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 13 }}>🔍</span>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
           <input className="input" placeholder="Search driver..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 32 }} />
         </div>
         <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ maxWidth: 160 }}>
@@ -495,7 +511,7 @@ export default function Drivers() {
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', fontWeight: 600 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
-                        <span style={{ color: s.dot }}>Active</span>
+                        <span style={{ color: s.dot }}>{s.label}</span>
                       </span>
                     </td>
                     <td><span className={`badge ${s.cls}`}>{s.label}</span></td>
@@ -543,10 +559,15 @@ export default function Drivers() {
             <div className="form-group"><label className="form-label">Driver Name *</label><input className="input" value={form.name} onChange={f('name')} placeholder="e.g. Ravi Kumar" /></div>
             <div className="form-group"><label className="form-label">Email</label><input className="input" type="email" value={form.email} onChange={f('email')} placeholder="driver@example.com" /></div>
             <div className="form-group"><label className="form-label">Phone Number</label><input className="input" value={form.phone} onChange={f('phone')} placeholder="9876543210" /></div>
-            <div className="form-group"><label className="form-label">License Number *</label><input className="input" value={form.license_number} onChange={f('license_number')} /></div>
-            <div className="form-group"><label className="form-label">License Type</label>
-              <select className="input" value={form.license_type} onChange={f('license_type')}>{['LMV','HMV','HPMV','PSV','Transport'].map(t => <option key={t}>{t}</option>)}</select></div>
-            <div className="form-group"><label className="form-label">License Expiry</label><input className="input" type="date" value={form.license_expiry} onChange={f('license_expiry')} /></div>
+            <div className="form-group"><label className="form-label">Date of Birth</label><input className="input" type="date" value={form.dob} onChange={f('dob')} /></div>
+            <div className="form-group"><label className="form-label">Gender</label>
+              <select className="input" value={form.gender} onChange={f('gender')}>
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select></div>
+            <div className="form-group"><label className="form-label">License Number</label><input className="input" value={form.license_number} onChange={f('license_number')} placeholder="e.g. KA0120220012345" /></div>
             <div className="form-group"><label className="form-label">Experience (years)</label><input className="input" type="number" min="0" value={form.experience_years} onChange={f('experience_years')} /></div>
             <div className="form-group"><label className="form-label">Status</label>
               <select className="input" value={form.status} onChange={f('status')}>{['available','on_trip','off_duty','suspended'].map(t => <option key={t}>{t}</option>)}</select></div>

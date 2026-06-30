@@ -14,6 +14,8 @@ const Driver = sequelize.define('Driver', {
   address:             { type: DataTypes.TEXT },
   emergency_contact:   { type: DataTypes.STRING(20) },
   assigned_vehicle_id: { type: DataTypes.INTEGER, allowNull: true },
+  dob:                 { type: DataTypes.DATEONLY, allowNull: true },
+  gender:              { type: DataTypes.ENUM('male','female','other'), allowNull: true },
 }, { tableName: 'drivers', timestamps: true });
 
 module.exports = Driver;

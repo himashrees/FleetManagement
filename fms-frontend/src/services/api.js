@@ -54,6 +54,9 @@ export const gpsAPI = {
   getLive:    ()             => api.get('/gps/live'),
   getHistory: (id, params)   => api.get(`/gps/history/${id}`, { params }),
   push:       (data)         => api.post('/gps/push', data),
+  simStatus:  ()             => api.get('/gps/simulator/status'),
+  simStart:   ()             => api.post('/gps/simulator/start'),
+  simStop:    ()             => api.post('/gps/simulator/stop'),
 }
 
 export const maintenanceAPI = {
@@ -90,9 +93,10 @@ export const alertAPI = {
 }
 
 export const reportAPI = {
-  summary: ()       => api.get('/reports/summary'),
-  fuel:    (params) => api.get('/reports/fuel', { params }),
-  trips:   (params) => api.get('/reports/trips', { params }),
+  summary:   ()       => api.get('/reports/summary'),
+  fuel:      (params) => api.get('/reports/fuel', { params }),
+  trips:     (params) => api.get('/reports/trips', { params }),
+  executive: ()       => api.get('/reports/executive'),
 }
 
 export const userAPI = {

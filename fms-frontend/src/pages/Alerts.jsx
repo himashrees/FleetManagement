@@ -61,18 +61,32 @@ const StatusBadge = ({ read }) => (
 )
 
 /* ── KPI Card ───────────────────────────────────────────────── */
-const KpiCard = ({ icon, label, value, sub, color, bg }) => (
-  <div style={{
-    background: bg || '#fff',
-    border: '1px solid #e5e7eb', borderRadius: 12,
-    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16,
-  }}>
-    <div style={{
-      width: 48, height: 48, borderRadius: 12,
-      background: color + '1a',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 22, flexShrink: 0,
-    }}>{icon}</div>
+const KpiCard = ({ icon: Icon, label, value, sub, color, bg }) => (
+  <div
+    className="kpi-card"
+    onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${color}48, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
+    onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${color}30`; e.currentTarget.style.transform = 'translateY(0)' }}
+    style={{
+      background: bg || '#fff',
+      border: '1px solid #e5e7eb', borderRadius: 12,
+      padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16,
+      boxShadow: `0 2px 8px ${color}30`,
+      transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
+      '--icon-glow': `${color}80`,
+    }}
+  >
+    <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      <div className="kpi-icon" style={{
+        width: 48, height: 48, borderRadius: 12,
+        background: color + '1a',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative', zIndex: 1, color,
+      }}><Icon size={22} /></div>
+      <div className="kpi-ring" style={{
+        position: 'absolute', inset: -4, borderRadius: 12,
+        border: `2px solid ${color}`, opacity: 0, pointerEvents: 'none',
+      }} />
+    </div>
     <div>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, color: '#111827', lineHeight: 1 }}>{value}</div>
@@ -88,6 +102,7 @@ export default function Alerts() {
   const [drivers,  setDrivers]  = useState([])
   const [loading,  setLoading]  = useState(true)
   const [modal,    setModal]    = useState(false)   // 'create' | false
+  const [viewAlert, setViewAlert] = useState(null)   // alert object being viewed, or null
   const [form,     setForm]     = useState(EMPTY_FORM)
   const [saving,   setSaving]   = useState(false)
   const [checking, setChecking] = useState(false)
@@ -160,6 +175,15 @@ export default function Alerts() {
 
   /* ── derived data ──────────────────────────────────────────── */
   const getVehicleReg = (id) => vehicles.find(v => String(v.id) === String(id))?.registration_no || (id ? `VEH #${id}` : '—')
+  // Resolves the vehicle to show for an alert: use the alert's own vehicle_id if set,
+  // otherwise fall back to the reporting driver's currently assigned vehicle
+  // (covers older alerts created before vehicle_id was auto-filled on the backend).
+  const getAlertVehicleReg = (a) => {
+    if (a.vehicle_id) return getVehicleReg(a.vehicle_id)
+    const driver = drivers.find(d => String(d.id) === String(a.driver_id))
+    if (driver?.assigned_vehicle_id) return getVehicleReg(driver.assigned_vehicle_id)
+    return '—'
+  }
   const getDriverName = (id) => {
     const d = drivers.find(d => String(d.id) === String(id))
     return d ? (d.user?.name || `Driver #${id}`) : (id ? `DRV #${id}` : '—')
@@ -215,7 +239,7 @@ export default function Alerts() {
         if (
           !a.title?.toLowerCase().includes(q) &&
           !a.type?.toLowerCase().includes(q) &&
-          !getVehicleReg(a.vehicle_id)?.toLowerCase().includes(q) &&
+          !getAlertVehicleReg(a)?.toLowerCase().includes(q) &&
           !getDriverName(a.driver_id)?.toLowerCase().includes(q)
         ) return false
       }
@@ -267,18 +291,38 @@ export default function Alerts() {
 
       {/* ── KPI Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <KpiCard icon="🔔" label="Total Alerts"    value={totalAlerts}    sub="This month"             color="#6366f1" />
-        <KpiCard icon="🚨" label="Critical Alerts"  value={criticalAlerts} sub="Needs immediate action" color="#ef4444" />
-        <KpiCard icon="⚠️" label="High Priority"    value={highAlerts}     sub="High priority alerts"   color="#f97316" />
-        <KpiCard icon="ℹ️" label="Medium Priority"  value={mediumAlerts}   sub="Medium priority alerts" color="#3b82f6" />
-        <KpiCard icon="✅" label="Resolved"         value={resolvedAlerts} sub="Alerts resolved"        color="#22c55e" />
+        <KpiCard icon={Bell}          label="Total Alerts"    value={totalAlerts}    sub="This month"             color="#6366f1" />
+        <KpiCard icon={ShieldAlert}   label="Critical Alerts"  value={criticalAlerts} sub="Needs immediate action" color="#ef4444" />
+        <KpiCard icon={AlertTriangle} label="High Priority"    value={highAlerts}     sub="High priority alerts"   color="#f97316" />
+        <KpiCard icon={Info}          label="Medium Priority"  value={mediumAlerts}   sub="Medium priority alerts" color="#3b82f6" />
+        <KpiCard icon={CheckCheck}    label="Resolved"         value={resolvedAlerts} sub="Alerts resolved"        color="#22c55e" />
       </div>
 
       {/* ── Charts Row ── */}
+      <style>{`
+        @keyframes kpi-ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.8); opacity: 0;   }
+          100% { transform: scale(1);   opacity: 0;   }
+        }
+        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
+        .kpi-card:hover .kpi-icon { transform: scale(1.18) rotate(-8deg); }
+        .kpi-icon {
+          transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease;
+        }
+        .kpi-card:hover .kpi-icon { box-shadow: 0 6px 16px var(--icon-glow, rgba(0,0,0,0.18)); }
+        .alert-chart-card {
+          transition: transform 0.25s cubic-bezier(0.34,1.3,0.64,1), box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        .alert-chart-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 16px 32px rgba(15,23,42,0.1), 0 4px 10px rgba(15,23,42,0.06);
+        }
+      `}</style>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr', gap: 16, marginBottom: 24 }}>
 
         {/* Alerts by Type — Pie */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Alerts by Type</span>
           </div>
@@ -309,7 +353,7 @@ export default function Alerts() {
         </div>
 
         {/* Trend — Area chart */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Alerts Trend (Last 7 Days)</div>
           <ResponsiveContainer width="100%" height={110}>
             <AreaChart data={trendData} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
@@ -329,7 +373,7 @@ export default function Alerts() {
         </div>
 
         {/* Alerts by Severity — Pie */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Alerts by Priority</div>
           {totalAlerts === 0 ? (
             <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: '40px 0' }}>No data yet</div>
@@ -470,7 +514,7 @@ export default function Alerts() {
                       {a.title && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{a.title}</div>}
                     </td>
                     <td style={{ padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, color: '#374151' }}>
-                      {getVehicleReg(a.vehicle_id)}
+                      {getAlertVehicleReg(a)}
                     </td>
                     <td style={{ padding: '12px 14px', color: '#374151' }}>{getDriverName(a.driver_id)}</td>
                     <td style={{ padding: '12px 14px' }}><SevBadge sev={a.severity} /></td>
@@ -478,6 +522,12 @@ export default function Alerts() {
                     <td style={{ padding: '12px 14px' }}><StatusBadge read={a.is_read} /></td>
                     <td style={{ padding: '12px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          title="View details"
+                          onClick={() => setViewAlert(a)}
+                          style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '4px 6px', cursor: 'pointer', color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                          <Eye size={13} />
+                        </button>
                         {!a.is_read && (
                           <button
                             title="Mark as read"
@@ -612,6 +662,72 @@ export default function Alerts() {
               <button className="btn btn-primary" onClick={handleCreate} disabled={saving}>
                 {saving ? 'Creating…' : 'Create Alert'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── View Alert Details Modal ── */}
+      {viewAlert && (
+        <div className="overlay" onClick={() => setViewAlert(null)}>
+          <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{TYPE_ICON[viewAlert.type] || '⚠️'}</span>
+                ALT-{String(viewAlert.id).padStart(4, '0')}
+              </h2>
+              <button className="btn-icon" onClick={() => setViewAlert(null)}><X size={16} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <SevBadge sev={viewAlert.severity} />
+                <StatusBadge read={viewAlert.is_read} />
+                <span style={{ fontSize: 12, color: '#6b7280', alignSelf: 'center' }}>{fmtTime(viewAlert.createdAt)}</span>
+              </div>
+
+              <div className="form-grid">
+                <div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Vehicle</div>
+                  <div style={{ fontSize: 13, color: '#111827' }}>{getAlertVehicleReg(viewAlert)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Driver</div>
+                  <div style={{ fontSize: 13, color: '#111827' }}>{getDriverName(viewAlert.driver_id)}</div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Title</label>
+                <div style={{ fontSize: 14, color: '#111827', fontWeight: 500 }}>{viewAlert.title || '—'}</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <div style={{
+                  fontSize: 13, color: '#374151', whiteSpace: 'pre-wrap',
+                  background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8,
+                  padding: '10px 12px', minHeight: 40,
+                }}>
+                  {viewAlert.message || 'No description provided.'}
+                </div>
+              </div>
+
+              {viewAlert.voice_note && (
+                <div className="form-group">
+                  <label className="form-label">Voice Note</label>
+                  <audio controls src={viewAlert.voice_note} style={{ width: '100%', height: 36 }} />
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              {!viewAlert.is_read && (
+                <button className="btn btn-ghost" onClick={() => { markRead(viewAlert.id); setViewAlert(null) }}>
+                  Mark as Read
+                </button>
+              )}
+              <button className="btn btn-primary" onClick={() => setViewAlert(null)}>Close</button>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Plus, Trash2, RefreshCw, Fuel as FuelIcon, Droplet, Wallet, TrendingUp,
-  Search, Filter as FilterIcon, RotateCcw, Eye, Pencil,
+  Search, Filter as FilterIcon, RotateCcw, Eye, Pencil, Zap, Leaf,
   ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight,
 } from 'lucide-react'
 import { fuelAPI, vehicleAPI, driverAPI } from '../services/api'
@@ -24,33 +24,63 @@ const FUEL_TYPE_COLORS = {
   hybrid:   { bg: '#fdf4ff', color: '#7e22ce', border: '#e9d5ff' },
 }
 
+const FUEL_TYPE_ICONS = {
+  petrol:   Droplet,
+  diesel:   Droplet,
+  electric: Zap,
+  hybrid:   Leaf,
+}
+
 function FuelTypeBadge({ type }) {
   const s = FUEL_TYPE_COLORS[type] || { bg: '#f3f4f6', color: '#374151', border: '#e5e7eb' }
+  const Icon = FUEL_TYPE_ICONS[type]
+  if (!type) {
+    return <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+  }
   return (
-    <span style={{
+    <span className="fuel-badge" style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
       background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-      padding: '2px 10px', borderRadius: '999px', fontSize: '0.72rem',
+      padding: '3px 11px', borderRadius: '999px', fontSize: '0.72rem',
       fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-    }}>{type}</span>
+    }}>
+      {Icon && <Icon size={11} strokeWidth={2.5} />}
+      {type}
+    </span>
   )
 }
 
 function StatCard({ icon: Icon, label, value, color = 'blue', sub }) {
   const colors = {
-    blue:   { bg: '#eff6ff', icon: '#3b82f6', border: '#bfdbfe' },
-    green:  { bg: '#f0fdf4', icon: '#22c55e', border: '#bbf7d0' },
-    amber:  { bg: '#fff7ed', icon: '#f59e0b', border: '#fed7aa' },
-    purple: { bg: '#f5f3ff', icon: '#7c3aed', border: '#ddd6fe' },
+    blue:   { bg: '#eff6ff', icon: '#3b82f6', border: '#bfdbfe', glow: 'rgba(59,130,246,0.28)' },
+    green:  { bg: '#f0fdf4', icon: '#22c55e', border: '#bbf7d0', glow: 'rgba(34,197,94,0.28)'  },
+    amber:  { bg: '#fff7ed', icon: '#f59e0b', border: '#fed7aa', glow: 'rgba(245,158,11,0.28)' },
+    purple: { bg: '#f5f3ff', icon: '#7c3aed', border: '#ddd6fe', glow: 'rgba(124,58,237,0.28)' },
   }
   const c = colors[color]
   return (
-    <div className="stat-card" style={{ borderTop: `3px solid ${c.icon}` }}>
-      <div style={{
-        width: 38, height: 38, borderRadius: 10, background: c.bg,
-        border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center',
-        justifyContent: 'center', marginBottom: 12, color: c.icon,
-      }}>
-        <Icon size={18} />
+    <div
+      className="stat-card kpi-card"
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${c.glow}, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${c.glow}`; e.currentTarget.style.transform = 'translateY(0)' }}
+      style={{
+        borderTop: `3px solid ${c.icon}`,
+        boxShadow: `0 2px 8px ${c.glow}`,
+        transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
+      }}
+    >
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <div className="kpi-icon" style={{
+          width: 38, height: 38, borderRadius: 10, background: c.bg,
+          border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', marginBottom: 12, color: c.icon, position: 'relative', zIndex: 1,
+        }}>
+          <Icon size={18} />
+        </div>
+        <div className="kpi-ring" style={{
+          position: 'absolute', inset: -4, borderRadius: 10,
+          border: `2px solid ${c.icon}`, opacity: 0, pointerEvents: 'none',
+        }} />
       </div>
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
@@ -219,7 +249,17 @@ export default function Fuel() {
   }
 
   const f = (k) => (e) => {
-    setForm(p => ({ ...p, [k]: e.target.value }))
+    const value = e.target.value
+    setForm(p => {
+      const next = { ...p, [k]: value }
+      // When the vehicle changes, default fuel type to whatever was
+      // registered for that vehicle — still editable afterward.
+      if (k === 'vehicle_id') {
+        const veh = vehicles.find(v => String(v.id) === String(value))
+        if (veh?.fuel_type) next.fuel_type = veh.fuel_type
+      }
+      return next
+    })
     if (errors[k]) setErrors(p => { const n = { ...p }; delete n[k]; return n })
   }
 
@@ -228,6 +268,31 @@ export default function Fuel() {
 
   return (
     <div className="page-enter">
+      <style>{`
+        @keyframes fuel-row-in {
+          from { opacity: 0; transform: translateX(-6px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes kpi-ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.7; }
+          70%  { transform: scale(1.8); opacity: 0;   }
+          100% { transform: scale(1);   opacity: 0;   }
+        }
+        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
+        .kpi-card:hover .kpi-icon { transform: scale(1.14) rotate(-6deg); }
+        .kpi-icon { transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+        .fuel-badge { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+        .fuel-badge:hover { transform: translateY(-1px) scale(1.05); box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+        .table-container tbody tr { animation: fuel-row-in 0.35s ease both; }
+        .table-container tbody tr:hover {
+          background: #f8fafc;
+        }
+        .fuel-action-btn { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .fuel-action-btn:hover { transform: translateY(-2px) scale(1.08); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+        .btn-primary { transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease; }
+        .btn-primary:hover { transform: translateY(-2px); }
+        .btn-primary:active { transform: translateY(0) scale(0.97); }
+      `}</style>
       <PageHeader title="Fuel" accent="Logs" sub={`${filteredLogs.length} records`}>
         <button className="btn-icon" onClick={load} title="Refresh"><RefreshCw size={14} /></button>
         <button className="btn btn-primary" onClick={openAddModal}><Plus size={15} /> Add Fuel Log</button>
@@ -294,7 +359,10 @@ export default function Fuel() {
             <thead>
               <tr>
                 <th>#</th><th>Date</th><th>Vehicle Number</th><th>Driver</th><th>Fuel Type</th>
-                <th>Quantity (L)</th><th>Rate (₹/L)</th><th>Amount (₹)</th><th>Odometer (KM)</th>
+                <th style={{ textAlign: 'right' }}>Quantity (L)</th>
+                <th style={{ textAlign: 'right' }}>Rate (₹/L)</th>
+                <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                <th style={{ textAlign: 'right' }}>Odometer (KM)</th>
                 <th>Fuel Station</th><th>Action</th>
               </tr>
             </thead>
@@ -310,7 +378,7 @@ export default function Fuel() {
                 const veh = vehicleMap[l.vehicle_id]
                 const driverName = driverMap[l.driver_id]
                 return (
-                  <tr key={l.id}>
+                  <tr key={l.id} style={{ animationDelay: `${i * 40}ms` }}>
                     <td style={{ color: 'var(--text-muted)' }}>{pageStart + i + 1}</td>
                     <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                       {formatDateTime(l.filled_at)}
@@ -325,16 +393,16 @@ export default function Fuel() {
                     </td>
                     <td style={{ fontSize: '0.85rem' }}>{driverName || '—'}</td>
                     <td><FuelTypeBadge type={l.fuel_type} /></td>
-                    <td><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{parseFloat(l.litres).toFixed(2)}</span></td>
-                    <td><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{l.cost_per_litre ? parseFloat(l.cost_per_litre).toFixed(2) : '—'}</span></td>
-                    <td><span style={{ fontFamily: 'var(--font-mono)', color: '#16a34a', fontWeight: 700 }}>{parseFloat(l.total_cost || 0).toFixed(2)}</span></td>
-                    <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{l.odometer_km ? parseFloat(l.odometer_km).toLocaleString('en-IN') : '—'}</span></td>
+                    <td style={{ textAlign: 'right' }}><span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{parseFloat(l.litres).toFixed(2)}</span></td>
+                    <td style={{ textAlign: 'right' }}><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{l.cost_per_litre ? parseFloat(l.cost_per_litre).toFixed(2) : '—'}</span></td>
+                    <td style={{ textAlign: 'right' }}><span style={{ fontFamily: 'var(--font-mono)', color: '#16a34a', fontWeight: 700 }}>₹{parseFloat(l.total_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></td>
+                    <td style={{ textAlign: 'right' }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{l.odometer_km ? parseFloat(l.odometer_km).toLocaleString('en-IN') : '—'}</span></td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{l.station_name || '—'}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn-icon" onClick={() => setViewLog(l)} title="View" style={{ color: '#0284c7' }}><Eye size={13} /></button>
-                        <button className="btn-icon" onClick={() => openEditModal(l)} title="Edit" style={{ color: '#d97706' }}><Pencil size={13} /></button>
-                        <button className="btn-icon" onClick={() => handleDelete(l.id)} title="Delete" style={{ color: '#dc2626' }}><Trash2 size={13} /></button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn-icon fuel-action-btn" onClick={() => setViewLog(l)} title="View" style={{ color: '#0284c7' }}><Eye size={13} /></button>
+                        <button className="btn-icon fuel-action-btn" onClick={() => openEditModal(l)} title="Edit" style={{ color: '#d97706' }}><Pencil size={13} /></button>
+                        <button className="btn-icon fuel-action-btn" onClick={() => handleDelete(l.id)} title="Delete" style={{ color: '#dc2626' }}><Trash2 size={13} /></button>
                       </div>
                     </td>
                   </tr>

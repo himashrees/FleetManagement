@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Plus, RefreshCw, ArrowLeft, Search, Eye, MapPin, User,
-  Fuel, Receipt, Upload, CheckCircle2, Square, ListChecks,
-  Hourglass, Ban, Clock,
+  CheckCircle2, Ban, Clock, Route, Truck, Activity,
+  CalendarCheck, XCircle, ChevronRight,
 } from 'lucide-react'
 import { tripAPI, vehicleAPI, driverAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -38,23 +38,77 @@ function Breadcrumb({ items }) {
   )
 }
 
-function StatCard({ icon: Icon, label, value, color, sub }) {
-  const colors = {
-    purple: { bg: 'var(--purple-bg)', icon: 'var(--purple)' },
-    amber:  { bg: 'var(--amber-bg)',  icon: 'var(--amber)'  },
-    green:  { bg: 'var(--green-bg)',  icon: 'var(--green)'  },
-    red:    { bg: 'var(--red-bg)',    icon: 'var(--red)'    },
-    blue:   { bg: 'var(--blue-bg)',   icon: 'var(--blue)'   },
+/* ── Stat card with gradient + hover lift + glow ── */
+
+const STAT_CSS = `
+  @keyframes trp-ring-pulse {
+    0%   { transform: scale(1);   opacity: 0.7; }
+    70%  { transform: scale(1.8); opacity: 0;   }
+    100% { transform: scale(1);   opacity: 0;   }
   }
-  const c = colors[color] || colors.purple
+  .trp-kpi-card:hover .trp-kpi-ring { animation: trp-ring-pulse 1.6s ease-in-out infinite; }
+  .trp-kpi-card:hover .trp-kpi-icon { transform: scale(1.14) rotate(-6deg); }
+  .trp-kpi-icon { transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+`
+
+/* ── KPI card — same style as Drivers page ── */
+const KPI_THEMES = {
+  purple: { accent: '#7c3aed', bg: '#ede9fe', border: '#c4b5fd', glow: 'rgba(124,58,237,0.22)' },
+  amber:  { accent: '#d97706', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(217,119,6,0.22)'  },
+  blue:   { accent: '#0284c7', bg: '#e0f2fe', border: '#bae6fd', glow: 'rgba(2,132,199,0.22)'  },
+  green:  { accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.22)'  },
+  red:    { accent: '#dc2626', bg: '#fee2e2', border: '#fca5a5', glow: 'rgba(220,38,38,0.22)'  },
+}
+
+function StatCard({ icon: Icon, label, value, color, sub }) {
+  const s = KPI_THEMES[color] || KPI_THEMES.purple
   return (
-    <div className="stat-card">
-      <div style={{ width: 38, height: 38, borderRadius: 10, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12, color: c.icon }}>
-        <Icon size={18} />
+    <div
+      className="trp-kpi-card"
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 40px ${s.glow}, 0 3px 10px rgba(0,0,0,0.07)`; e.currentTarget.style.transform = 'translateY(-5px) scale(1.025)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${s.glow}`; e.currentTarget.style.transform = 'translateY(0) scale(1)' }}
+      style={{
+        background: '#fff', border: `1px solid ${s.border}`,
+        borderRadius: 'var(--radius-lg)', padding: '20px 20px 18px',
+        position: 'relative', overflow: 'hidden', cursor: 'default',
+        boxShadow: `0 2px 8px ${s.glow}`,
+        transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
+      }}
+    >
+      {/* diagonal bg wash */}
+      <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${s.bg}80 0%, transparent 60%)`, pointerEvents: 'none' }} />
+      {/* top accent stripe */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${s.accent}, ${s.accent}55)` }} />
+
+      {/* icon left + value right */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
+        <div style={{ position: 'relative', display: 'inline-flex' }}>
+          <div className="trp-kpi-icon" style={{
+            width: 46, height: 46, borderRadius: 'var(--radius-md)',
+            background: s.bg, border: `1.5px solid ${s.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: s.accent, boxShadow: `0 3px 10px ${s.glow}`,
+            position: 'relative', zIndex: 1,
+          }}>
+            <Icon size={20} strokeWidth={2} />
+          </div>
+          <div className="trp-kpi-ring" style={{
+            position: 'absolute', inset: -5, borderRadius: 'var(--radius-md)',
+            border: `2px solid ${s.accent}`, opacity: 0, pointerEvents: 'none',
+          }} />
+        </div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontSize: '2.4rem',
+          fontWeight: 800, color: s.accent, lineHeight: 1,
+          letterSpacing: '-0.04em', position: 'relative',
+        }}>{value}</div>
       </div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {sub && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>{sub}</div>}
+
+      {/* label + sub */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ fontSize: '0.73rem', fontWeight: 700, color: s.accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{label}</div>
+        {sub && <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 400 }}>{sub}</div>}
+      </div>
     </div>
   )
 }
@@ -438,16 +492,17 @@ export default function Trips() {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn-icon" onClick={load} title="Refresh"><RefreshCw size={14} /></button>
-          <button className="btn btn-primary" onClick={openCreate}><Plus size={15} /> + Create Trip</button>
+          <button className="btn btn-primary" onClick={openCreate}><Plus size={15} /> Create Trip</button>
         </div>
       </div>
 
+      <style>{STAT_CSS}</style>
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 20 }}>
-        <StatCard icon={ListChecks} label="Total Trips"     value={counts.total}     color="purple" sub="All Time" />
-        <StatCard icon={Clock}      label="Upcoming Trips"  value={counts.upcoming}  color="amber"  sub="Scheduled" />
-        <StatCard icon={Hourglass}  label="Ongoing Trips"   value={counts.ongoing}   color="blue"   sub="In Progress" />
-        <StatCard icon={CheckCircle2} label="Completed"     value={counts.completed} color="green"  sub="Completed" />
-        <StatCard icon={Ban}        label="Cancelled Trips" value={counts.cancelled} color="red"    sub="Cancelled" />
+        <StatCard icon={Route}        label="Total Trips"     value={counts.total}     color="purple" sub="All Time"    />
+        <StatCard icon={CalendarCheck} label="Upcoming Trips" value={counts.upcoming}  color="amber"  sub="Scheduled"  />
+        <StatCard icon={Activity}     label="Ongoing Trips"   value={counts.ongoing}   color="blue"   sub="In Progress" />
+        <StatCard icon={CheckCircle2} label="Completed"       value={counts.completed} color="green"  sub="Completed"  />
+        <StatCard icon={XCircle}      label="Cancelled Trips" value={counts.cancelled} color="red"    sub="Cancelled"  />
       </div>
 
       <div style={{ position: 'relative', maxWidth: 320, marginBottom: 16 }}>

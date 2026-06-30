@@ -1,12 +1,37 @@
 const { GpsLog, Vehicle } = require('../models');
 const { Op } = require('sequelize');
+const simulator = require('../utils/gpsSimulator');
+
+exports.startSimulator = (req, res) => {
+  const io = req.app.get('io');
+  const result = simulator.start(io);
+  return res.json({ success: true, data: { running: true, ...result } });
+};
+
+exports.stopSimulator = (req, res) => {
+  const result = simulator.stop();
+  return res.json({ success: true, data: { running: false, ...result } });
+};
+
+exports.simulatorStatus = (req, res) => {
+  return res.json({ success: true, data: { running: simulator.isRunning() } });
+};
 
 exports.pushLocation = async (req, res) => {
   try {
-    const { vehicle_id, latitude, longitude, speed_kmh, heading, altitude_m } = req.body;
-    const log = await GpsLog.create({ vehicle_id, latitude, longitude, speed_kmh, heading, altitude_m });
+    const { vehicle_id, latitude, longitude, speed_kmh, heading, altitude_m, accuracy_m } = req.body;
+    const log = await GpsLog.create({ vehicle_id, latitude, longitude, speed_kmh, heading, altitude_m, accuracy_m });
     const io = req.app.get('io');
-    if (io) io.to(`vehicle_${vehicle_id}`).emit('location_update', { vehicle_id, latitude, longitude, speed_kmh });
+    if (io) {
+      io.to(`vehicle_${vehicle_id}`).emit('location_update', { vehicle_id, latitude, longitude, speed_kmh });
+
+      // Also broadcast as a (partial) fleet_update so the live dashboard
+      // updates instantly even for clients not subscribed to this specific
+      // vehicle's room — same event the simulator uses, just one vehicle
+      // at a time instead of the whole fleet per tick.
+      const vehicle = await Vehicle.findByPk(vehicle_id, { attributes: ['id', 'registration_no', 'type', 'make', 'model'] });
+      if (vehicle) io.emit('fleet_update', [{ vehicle, position: log }]);
+    }
     return res.status(201).json({ success: true, data: log });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -15,7 +40,10 @@ exports.pushLocation = async (req, res) => {
 
 exports.getAllLatestPositions = async (req, res) => {
   try {
-    const vehicles = await Vehicle.findAll({ where: { status: 'active' }, attributes: ['id','registration_no'] });
+    // Same rule as the simulator: only vehicles currently on a trip should
+    // show up here. Without this, a vehicle's last-known position from a
+    // trip days ago would keep appearing on the live map forever.
+    const vehicles = await Vehicle.findAll({ where: { on_trip: true }, attributes: ['id','registration_no'] });
     const results = [];
     for (const v of vehicles) {
       const latest = await GpsLog.findOne({ where: { vehicle_id: v.id }, order: [['logged_at','DESC']] });

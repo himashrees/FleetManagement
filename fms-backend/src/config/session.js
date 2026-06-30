@@ -5,6 +5,8 @@ const sequelize = require('./database');
 const sessionStore = new SequelizeStore({
   db: sequelize,
   tableName: 'user_sessions',
+  checkExpirationInterval: 15 * 60 * 1000, // clean expired sessions every 15 min
+  expiration: parseInt(process.env.SESSION_MAX_AGE) || 86400000,
 });
 
 const sessionMiddleware = session({
@@ -15,10 +17,9 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     secure: false,
-    maxAge: parseInt(process.env.SESSION_MAX_AGE),
+    maxAge: parseInt(process.env.SESSION_MAX_AGE) || 86400000,
   },
 });
 
-sessionStore.sync();
-
 module.exports = sessionMiddleware;
+module.exports.sessionStore = sessionStore;

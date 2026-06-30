@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Search, Pencil, Trash2, Truck, RefreshCw, Camera, ArrowLeft, Eye } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Truck, RefreshCw, Camera, ArrowLeft, Eye, LayoutGrid, CheckCircle2, Navigation, Wrench, PowerOff } from 'lucide-react'
 import { vehicleAPI, maintenanceAPI, fuelAPI, tripAPI, documentAPI } from '../services/api'
 import { mlVehicleAPI } from '../services/mlApi'
 import { useToast } from '../context/ToastContext'
@@ -76,10 +76,10 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
   }, [vehicle.id])
 
   const TABS = [
-    { id: 'service',     label: 'Service History' },
     { id: 'documents',   label: 'Documents' },
     { id: 'trips',       label: 'Trips' },
     { id: 'fuel',        label: 'Fuel Logs' },
+    { id: 'service',     label: 'Service History' },
     { id: 'maintenance', label: 'Maintenance' },
   ]
 
@@ -122,18 +122,7 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: vehicle.status === 'active' ? '#16a34a' : '#9ca3af', display: 'inline-block' }} />
                   </span>
                 )},
-                { label: 'Availability', value: (
-                  vehicle.on_trip ? (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 999, padding: '4px 12px', letterSpacing: '0.03em' }}>ON TRIP</span>
-                  ) : vehicle.status === 'active' ? (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#dcfce7', borderRadius: 999, padding: '4px 12px', letterSpacing: '0.03em' }}>AVAILABLE</span>
-                  ) : (
-                    <span style={{ fontSize: 13, color: '#9ca3af' }}>—</span>
-                  )
-                )},
-                { label: 'Insurance Expiry', value: <span style={{ fontSize: 13, color: expiryColor(vehicle.insurance_expiry) }}>{fmtDate(vehicle.insurance_expiry)}</span> },
-                { label: 'RC Expiry',        value: <span style={{ fontSize: 13, color: expiryColor(vehicle.rc_expiry) }}>{fmtDate(vehicle.rc_expiry)}</span> },
-                { label: 'Last Service',     value: <span style={{ fontSize: 13 }}>{fmtDate(vehicle.updatedAt)}</span> },
+                { label: 'Total Trips', value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.length}</span> },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                   <span style={{ color: 'var(--text-muted)' }}>{label}</span>
@@ -154,7 +143,6 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
                 { label: 'Fuel Type',            value: vehicle.fuel_type },
                 { label: 'Manufacturing Year',   value: vehicle.year },
                 { label: 'Color',                value: vehicle.color },
-                { label: 'Chassis Number',       value: vehicle.vin_number, mono: true },
               ].map(({ label, value, mono }) => (
                 <div key={label} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 7 }}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
@@ -224,7 +212,7 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
                   ? <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No documents uploaded</div>
                   : <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead><tr style={{ background: 'var(--bg-canvas)' }}>
-                        {['#', 'Title', 'Type', 'Expiry Date', 'Status'].map(h => (
+                        {['#', 'Title', 'Expiry Date', 'Status'].map(h => (
                           <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontSize: 12 }}>{h}</th>
                         ))}
                       </tr></thead>
@@ -237,7 +225,6 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
                             <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
                               <td style={{ padding: '9px 12px', color: 'var(--text-muted)' }}>{i + 1}</td>
                               <td style={{ padding: '9px 12px', fontWeight: 500 }}>{d.title}</td>
-                              <td style={{ padding: '9px 12px', textTransform: 'capitalize' }}>{d.document_type?.replace('_', ' ')}</td>
                               <td style={{ padding: '9px 12px', color: ec }}>{fmtDate(d.expiry_date)}</td>
                               <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: ec + '20', color: ec }}>{es}</span></td>
                             </tr>
@@ -487,7 +474,7 @@ export default function Vehicles() {
   /* ── List view ── */
   return (
     <div className="page-enter">
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
             Vehicle <span style={{ color: 'var(--brand)' }}>Management</span>
@@ -501,27 +488,81 @@ export default function Vehicles() {
       </div>
 
       {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 20 }}>
+      <style>{`
+        @keyframes kpi-ring-pulse {
+          0%   { transform: scale(1);    opacity: 0.65; }
+          70%  { transform: scale(1.6);  opacity: 0; }
+          100% { transform: scale(1.6);  opacity: 0; }
+        }
+        .veh-kpi-card {
+          position: relative; overflow: hidden; cursor: default;
+          border-radius: var(--radius-lg);
+          transition: transform 0.22s cubic-bezier(0.4,0,0.2,1), box-shadow 0.22s;
+        }
+        .veh-kpi-card:hover { transform: translateY(-3px) scale(1.015); }
+        .veh-kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.8s ease-in-out infinite; }
+        .veh-kpi-card:hover .kpi-icon-box { transform: scale(1.08); }
+        .kpi-icon-box { transition: transform 0.2s; }
+      `}</style>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24 }}>
         {[
-          { label: 'Total Vehicles', value: total,       icon: '🚚', sub: 'All Vehicles',  color: 'var(--brand)', bg: 'var(--brand-light)' },
-          { label: 'Active',         value: active,      icon: '✅', sub: 'In Operation',  color: 'var(--green)', bg: 'var(--green-bg)'   },
-          { label: 'On Trip',        value: onTrip,      icon: '🚛', sub: 'Currently on Trip', color: '#1d4ed8',      bg: '#eff6ff'            },
-          { label: 'In Maintenance', value: maintenance, icon: '🔧', sub: 'Under Service', color: 'var(--amber)', bg: 'var(--amber-bg)'   },
-          { label: 'Inactive',       value: inactive,    icon: '⚠️', sub: 'Not in Use',    color: 'var(--red)',   bg: 'var(--red-bg)'     },
+          { label: 'Total Vehicles', value: total,       Icon: LayoutGrid,   sub: 'All Vehicles',      accent: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', glow: 'rgba(29,78,216,0.20)'  },
+          { label: 'Active',         value: active,      Icon: CheckCircle2, sub: 'In Operation',      accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.20)'  },
+          { label: 'On Trip',        value: onTrip,      Icon: Navigation,   sub: 'Currently on Trip', accent: '#0284c7', bg: '#e0f2fe', border: '#bae6fd', glow: 'rgba(2,132,199,0.20)'  },
+          { label: 'In Maintenance', value: maintenance, Icon: Wrench,       sub: 'Under Service',     accent: '#d97706', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(217,119,6,0.20)'  },
+          { label: 'Inactive',       value: inactive,    Icon: PowerOff,     sub: 'Not in Use',        accent: '#dc2626', bg: '#fee2e2', border: '#fecaca', glow: 'rgba(220,38,38,0.20)'  },
         ].map(s => (
-          <div key={s.label} className="stat-card" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0 }}>{s.icon}</div>
-            <div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 700, color: s.color, lineHeight: 1.1 }}>{s.value}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>{s.sub}</div>
+          <div key={s.label} className="veh-kpi-card" style={{
+            background: '#ffffff',
+            border: `1px solid ${s.border}`,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            padding: '20px 20px 18px',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 12px 32px ${s.glow}, 0 2px 8px rgba(0,0,0,0.06)` }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)' }}
+          >
+            {/* diagonal bg wash */}
+            <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${s.bg}70 0%, transparent 55%)`, pointerEvents: 'none' }} />
+            {/* top accent line */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${s.accent}, ${s.accent}60)` }} />
+
+            {/* icon row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <div className="kpi-icon-box" style={{
+                  width: 44, height: 44, borderRadius: 'var(--radius-md)',
+                  background: s.bg, border: `1.5px solid ${s.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: s.accent,
+                  boxShadow: `0 2px 8px ${s.glow}`,
+                  position: 'relative', zIndex: 1,
+                }}>
+                  <s.Icon size={19} strokeWidth={2} />
+                </div>
+                <div className="kpi-ring" style={{
+                  position: 'absolute', inset: -5, borderRadius: 'var(--radius-md)',
+                  border: `2px solid ${s.accent}`, opacity: 0, pointerEvents: 'none',
+                }} />
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)', fontSize: '2.2rem',
+                fontWeight: 800, color: s.accent, lineHeight: 1,
+                letterSpacing: '-0.04em', position: 'relative',
+              }}>{s.value}</div>
+            </div>
+
+            {/* label + sub */}
+            <div style={{ position: 'relative' }}>
+              <div style={{ fontSize: '0.73rem', fontWeight: 700, color: s.accent, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>{s.label}</div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 400 }}>{s.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Search + filter */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
           <input className="input" placeholder="Search vehicle..." value={search}
@@ -580,9 +621,21 @@ export default function Vehicles() {
                   </td>
                   <td onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn-icon" title="View" onClick={() => setDetailVehicle(v)}><Eye size={13} /></button>
-                      <button className="btn-icon" onClick={() => openEdit(v)}><Pencil size={13} /></button>
-                      <button className="btn-icon" onClick={() => openDelete(v)} style={{ color: 'var(--red)' }}><Trash2 size={13} /></button>
+                      <button title="View" onClick={() => setDetailVehicle(v)}
+                        style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: '#fff', color: 'var(--brand)', cursor: 'pointer', transition: 'all 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.borderColor = '#93c5fd' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                      ><Eye size={13} /></button>
+                      <button onClick={() => openEdit(v)}
+                        style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: '#fff', color: '#475569', cursor: 'pointer', transition: 'all 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#cbd5e1' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                      ><Pencil size={13} /></button>
+                      <button onClick={() => openDelete(v)}
+                        style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius)', border: '1px solid #fecaca', background: '#fff', color: 'var(--red)', cursor: 'pointer', transition: 'all 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#fecaca' }}
+                      ><Trash2 size={13} /></button>
                     </div>
                   </td>
                 </tr>
@@ -632,12 +685,6 @@ export default function Vehicles() {
               <select className="input" value={form.status} onChange={f('status')}>{['active','inactive','maintenance','retired'].map(t => <option key={t}>{t}</option>)}</select></div>
             <div className="form-group"><label className="form-label">Odometer (km)</label><input className="input" type="number" value={form.odometer_km} onChange={f('odometer_km')} /></div>
             <div className="form-group"><label className="form-label">Capacity (kg)</label><input className="input" type="number" value={form.capacity_kg} onChange={f('capacity_kg')} placeholder="Optional" /></div>
-            <div className="form-group"><label className="form-label">Insurance Expiry</label><input className="input" type="date" value={form.insurance_expiry} onChange={f('insurance_expiry')} /></div>
-            <div className="form-group"><label className="form-label">RC Expiry</label><input className="input" type="date" value={form.rc_expiry} onChange={f('rc_expiry')} /></div>
-          </div>
-          <div className="form-group" style={{ marginTop: 14 }}>
-            <label className="form-label">VIN Number (Optional)</label>
-            <input className="input" value={form.vin_number} onChange={f('vin_number')} placeholder="17-char VIN" />
           </div>
         </Modal>
       )}
