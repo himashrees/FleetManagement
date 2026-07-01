@@ -229,8 +229,11 @@ export default function AdminDashboard() {
     .map(([name, value]) => ({ name, value }))
 
   /* ── Fuel cost this month ── */
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
   const fuelCostMonth = fuelLogs
-    .filter(f => f.filled_at && new Date(f.filled_at) >= new Date(new Date().setDate(1)))
+    .filter(f => f.filled_at && new Date(f.filled_at) >= startOfMonth)
     .reduce((s, f) => s + parseFloat(f.total_cost || 0), 0)
 
   /* ── Top fuel consuming vehicles ── */

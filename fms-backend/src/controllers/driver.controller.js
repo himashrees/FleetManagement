@@ -7,7 +7,7 @@ exports.getAll = async (req, res) => {
     const drivers = await Driver.findAll({
       include: [
         { model: User,    as: 'user',            attributes: ['name','email','phone'] },
-        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model'] },
+        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model','fuel_type','type','color','odometer_km','photo_url'] },
         { model: Trip,    as: 'trips',           attributes: ['id','status'], required: false },
       ],
     });
@@ -31,7 +31,7 @@ exports.getById = async (req, res) => {
     const driver = await Driver.findByPk(req.params.id, {
       include: [
         { model: User,    as: 'user', attributes: ['name','email','phone'] },
-        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model'] },
+        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model','fuel_type','type','color','odometer_km','photo_url'] },
         { model: Trip,    as: 'trips', attributes: ['id','status'], required: false },
       ],
     });
@@ -85,7 +85,7 @@ exports.create = async (req, res) => {
     const result = await Driver.findByPk(driver.id, {
       include: [
         { model: User,    as: 'user', attributes: ['name','email','phone'] },
-        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model'] },
+        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model','fuel_type','type','color','odometer_km','photo_url'] },
       ],
     });
     return res.status(201).json({ success: true, data: result });
@@ -122,7 +122,7 @@ exports.update = async (req, res) => {
     const result = await Driver.findByPk(driver.id, {
       include: [
         { model: User,    as: 'user', attributes: ['name','email','phone'] },
-        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model'] },
+        { model: Vehicle, as: 'assignedVehicle', attributes: ['registration_no','make','model','fuel_type','type','color','odometer_km','photo_url'] },
       ],
     });
     return res.json({ success: true, data: result });

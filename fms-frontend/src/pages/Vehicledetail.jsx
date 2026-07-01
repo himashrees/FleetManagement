@@ -8,7 +8,7 @@ import { LoadingState } from '../components/Common'
 const STATUS_COLOR = { active: '#16a34a', inactive: '#6b7280', maintenance: '#d97706', retired: '#dc2626' }
 const STATUS_BG    = { active: '#dcfce7', inactive: '#f1f5f9', maintenance: '#fef3c7', retired: '#fee2e2' }
 
-const TABS = ['Service History', 'Documents', 'Trips', 'Fuel Logs', 'Maintenance']
+const TABS = ['Documents', 'Trips', 'Fuel Logs', 'Service History', 'Maintenance']
 
 function InfoRow({ label, value }) {
   return (
@@ -30,7 +30,7 @@ export default function VehicleDetail() {
   const [fuel, setFuel]               = useState([])
   const [documents, setDocuments]     = useState([])
   const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState('Service History')
+  const [tab, setTab]                 = useState('Documents')
 
   useEffect(() => {
     setLoading(true)

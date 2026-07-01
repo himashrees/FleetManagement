@@ -2,7 +2,7 @@ const { Trip, Vehicle, Driver, Route, User, FuelLog, Alert } = require('../model
 const { Op } = require('sequelize');
 
 const tripInclude = [
-  { model: Vehicle, as: 'vehicle', attributes: ['registration_no','make','model','odometer_km'] },
+  { model: Vehicle, as: 'vehicle', attributes: ['registration_no','make','model','odometer_km','fuel_type','type','photo_url'] },
   { model: Driver,  as: 'driver',  attributes: ['id','license_number'], include: [
     { model: User, as: 'user', attributes: ['name','phone'] },
   ]},
@@ -30,6 +30,8 @@ exports.getAll = async (req, res) => {
     if (status)     where.status     = status;
     if (driver_id)  where.driver_id  = parseInt(driver_id);
     if (vehicle_id) where.vehicle_id = parseInt(vehicle_id);
+
+    console.log('>>> TRIP CONTROLLER VERSION CHECK <<<');
 
     const trips = await Trip.findAll({ where, include: tripInclude, order: [['createdAt','DESC']] });
 

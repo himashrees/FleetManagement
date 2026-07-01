@@ -53,7 +53,7 @@ const expiryColor = (d) => {
 
 /* ── Vehicle Detail Full Page ─────────────────────────────── */
 function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
-  const [tab,         setTab]         = useState('service')
+  const [tab,         setTab]         = useState('documents')
   const [maintenance, setMaintenance] = useState([])
   const [fuelLogs,    setFuelLogs]    = useState([])
   const [trips,       setTrips]       = useState([])
@@ -122,7 +122,7 @@ function VehicleDetail({ vehicle, healthScore, onBack, onEdit, onDelete }) {
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: vehicle.status === 'active' ? '#16a34a' : '#9ca3af', display: 'inline-block' }} />
                   </span>
                 )},
-                { label: 'Total Trips', value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.length}</span> },
+                { label: 'Total Trips', value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.filter(t => t.status !== 'cancelled').length}</span> },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
                   <span style={{ color: 'var(--text-muted)' }}>{label}</span>

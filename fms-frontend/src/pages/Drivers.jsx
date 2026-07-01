@@ -114,7 +114,7 @@ function DriverDetail({ driver, trips, safetyData, onBack, onEdit, onDelete }) {
                     <span style={{ fontSize: 12, fontWeight: 700, color: s.dot }}>{s.label}</span>
                   </span>
                 )},
-                { label: 'Total Trips',  value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.length}</span> },
+                { label: 'Total Trips',  value: <span style={{ fontSize: 13, fontWeight: 600 }}>{trips.filter(t => t.status !== 'cancelled').length}</span> },
                 { label: 'Date Joined',  value: <span style={{ fontSize: 12 }}>{fmtDate(driver.createdAt)}</span> },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
