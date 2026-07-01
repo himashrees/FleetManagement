@@ -278,8 +278,15 @@ export default function Maintenance() {
     if (Object.keys(errs).length) { setErrors(errs); return }
     setSaving(true)
     try {
-      if (form.id) { await maintenanceAPI.update(form.id, form); toast.success('Maintenance record updated') }
-      else         { await maintenanceAPI.create(form); toast.success('Maintenance scheduled') }
+      // Optional date/number inputs submit '' when left blank; send null
+      // instead so the backend doesn't try to store an empty string as a
+      // DATEONLY/DECIMAL/FLOAT value.
+      const payload = { ...form }
+      for (const field of ['scheduled_date', 'completed_date', 'next_due_date', 'cost', 'odometer_km', 'next_due_km']) {
+        if (payload[field] === '') payload[field] = null
+      }
+      if (form.id) { await maintenanceAPI.update(form.id, payload); toast.success('Maintenance record updated') }
+      else         { await maintenanceAPI.create(payload); toast.success('Maintenance scheduled') }
       setModal(false); setForm(EMPTY); setErrors({}); load()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save')
@@ -399,7 +406,13 @@ export default function Maintenance() {
                         )}
                       </div>
                     </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', maxWidth: 220 }}>{r.description || '—'}</td>
+                    <td
+                      style={{
+                        fontSize: '0.82rem', color: 'var(--text-secondary)',
+                        maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                      title={r.description || ''}
+                    >{r.description || '—'}</td>
                     <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{formatDate(r.scheduled_date)}</span></td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -520,14 +533,6 @@ export default function Maintenance() {
                 <input className="input" type="number" min="0" value={form.cost} onChange={f('cost')} />
               </div>
               <div className="form-group">
-                <label className="form-label">Odometer at Service (km)</label>
-                <input className="input" type="number" min="0" value={form.odometer_km} onChange={f('odometer_km')} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Due by Odometer (km)</label>
-                <input className="input" type="number" min="0" placeholder="e.g. 45000" value={form.next_due_km} onChange={f('next_due_km')} />
-              </div>
-              <div className="form-group">
                 <label className="form-label">Workshop Name</label>
                 <input className="input" value={form.workshop_name} onChange={f('workshop_name')} />
               </div>
@@ -585,8 +590,6 @@ export default function Maintenance() {
                 ['Scheduled Date',  formatDate(viewRecord.scheduled_date)],
                 ['Completed Date',  formatDate(viewRecord.completed_date)],
                 ['Cost',            viewRecord.cost ? `₹${parseFloat(viewRecord.cost).toLocaleString('en-IN')}` : '—'],
-                ['Odometer',        viewRecord.odometer_km ? `${parseFloat(viewRecord.odometer_km).toLocaleString('en-IN')} km` : '—'],
-                ['Due by Odometer', viewRecord.next_due_km ? `${parseFloat(viewRecord.next_due_km).toLocaleString('en-IN')} km` : '—'],
                 ['Next Due Date',   formatDate(viewRecord.next_due_date)],
                 ['Workshop',        viewRecord.workshop_name || '—'],
               ].map(([label, value]) => (

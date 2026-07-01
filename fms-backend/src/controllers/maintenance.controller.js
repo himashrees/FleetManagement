@@ -63,6 +63,22 @@
 const { Maintenance, Vehicle, Alert } = require('../models');
 const { Op } = require('sequelize');
 
+// Sequelize's DATEONLY/DECIMAL/FLOAT types don't accept '' as "no value" —
+// they try to coerce it into the target type and produce something MySQL
+// then rejects (e.g. "Incorrect date value: 'Invalid date'" or "Incorrect
+// decimal value: ''"). Blank form inputs submit '' rather than null/
+// undefined, so we normalize those empty strings to null before they ever
+// reach Sequelize.
+const DATE_FIELDS = ['scheduled_date', 'completed_date', 'next_due_date'];
+const NUMERIC_FIELDS = ['cost', 'odometer_km', 'next_due_km'];
+const sanitizeBody = (body) => {
+  const clean = { ...body };
+  for (const field of [...DATE_FIELDS, ...NUMERIC_FIELDS]) {
+    if (clean[field] === '') clean[field] = null;
+  }
+  return clean;
+};
+
 exports.getAll = async (req, res) => {
   try {
     const { status, vehicle_id } = req.query;
@@ -96,7 +112,7 @@ exports.getUpcoming = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const record = await Maintenance.create(req.body);
+    const record = await Maintenance.create(sanitizeBody(req.body));
     if (record.next_due_date) {
   await Alert.create({
     vehicle_id: record.vehicle_id,
@@ -116,7 +132,7 @@ exports.update = async (req, res) => {
   try {
     const record = await Maintenance.findByPk(req.params.id);
     if (!record) return res.status(404).json({ success: false, message: 'Record not found' });
-    await record.update(req.body);
+    await record.update(sanitizeBody(req.body));
     if (record.status === 'scheduled' && record.next_due_date) {
   await Alert.create({
     vehicle_id: record.vehicle_id,
