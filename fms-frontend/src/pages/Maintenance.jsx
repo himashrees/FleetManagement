@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  Plus, Trash2, RefreshCw, Wrench, Clock, AlertTriangle, CheckCircle2,
+  Plus, Trash2, RefreshCw, Wrench, Clock, CheckCircle2,
   Search, Filter as FilterIcon, RotateCcw, Eye, Pencil, Zap,
   ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight,
+  Sparkles, Gauge, TrendingUp, History,
 } from 'lucide-react'
 import { maintenanceAPI, vehicleAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -39,6 +40,12 @@ const PRIORITY_COLORS = {
   low:    { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
   medium: { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
   high:   { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+}
+
+const URGENCY_COLORS = {
+  urgent: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+  soon:   { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  good:   { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
 }
 
 function TypeBadge({ type }) {
@@ -192,6 +199,14 @@ export default function Maintenance() {
   const [page, setPage]       = useState(1)
   const [perPage, setPerPage] = useState(10)
 
+  const [advisorVehicle, setAdvisorVehicle] = useState('')
+  const [advisor, setAdvisor]               = useState(null)
+  const [advisorLoading, setAdvisorLoading] = useState(false)
+
+  const [bulkModal, setBulkModal]     = useState(false)
+  const [bulkItems, setBulkItems]     = useState([])   // rows the admin reviews before confirming
+  const [bulkSaving, setBulkSaving]   = useState(false)
+
   const toast = useToast()
 
   const load = () => {
@@ -204,6 +219,80 @@ export default function Maintenance() {
 
   useEffect(() => { load() }, [])
   useEffect(() => { setPage(1) }, [search, statusFilter, typeFilter, dateFrom, dateTo, perPage])
+
+  // Default the advisor to the first vehicle once the vehicle list arrives
+  useEffect(() => {
+    if (!advisorVehicle && vehicles.length) setAdvisorVehicle(String(vehicles[0].id))
+  }, [vehicles]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadAdvisor = (vehicleId) => {
+    if (!vehicleId) return
+    setAdvisorLoading(true)
+    maintenanceAPI.predict(vehicleId)
+      .then(r => setAdvisor(r.data.data))
+      .catch(() => { setAdvisor(null); toast.error('Failed to load AI predictions') })
+      .finally(() => setAdvisorLoading(false))
+  }
+
+  useEffect(() => { loadAdvisor(advisorVehicle) }, [advisorVehicle]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Same suggested-date rule as the single "Schedule Now" button — overdue
+  // items (negative days_remaining) get scheduled for today, near-due items
+  // get scheduled that many days out.
+  const suggestedDateFor = (p) =>
+    new Date(Date.now() + Math.max(0, p.days_remaining) * 86400000).toISOString().slice(0, 10)
+
+  const openBulkSchedule = () => {
+    if (!advisor) return
+    const urgent = advisor.predictions.filter(p => p.urgency === 'urgent')
+    setBulkItems(urgent.map(p => ({
+      include: true,
+      type: p.type,
+      label: p.label,
+      eta_text: p.eta_text,
+      scheduled_date: suggestedDateFor(p),
+      priority: 'high',
+      odometer_km: advisor.odometer_km,
+      description: `${p.label} — predicted ${p.eta_text.toLowerCase()}`,
+    })))
+    setBulkModal(true)
+  }
+
+  const updateBulkItem = (idx, patch) =>
+    setBulkItems(items => items.map((it, i) => i === idx ? { ...it, ...patch } : it))
+
+  const handleBulkConfirm = async () => {
+    const toSchedule = bulkItems.filter(it => it.include)
+    if (!toSchedule.length) { toast.error('Select at least one item to schedule'); return }
+    setBulkSaving(true)
+    let succeeded = 0
+    let failed = 0
+    // Sequential, not Promise.all — keeps this readable in the network tab
+    // and avoids hammering the API with a burst of simultaneous writes.
+    for (const item of toSchedule) {
+      try {
+        await maintenanceAPI.create({
+          vehicle_id: advisor.vehicle_id,
+          type: item.type,
+          description: item.description,
+          status: 'scheduled',
+          priority: item.priority,
+          is_emergency: false,
+          scheduled_date: item.scheduled_date,
+          odometer_km: item.odometer_km || null,
+        })
+        succeeded++
+      } catch {
+        failed++
+      }
+    }
+    setBulkSaving(false)
+    setBulkModal(false)
+    if (succeeded) toast.success(`Scheduled ${succeeded} maintenance item${succeeded === 1 ? '' : 's'}`)
+    if (failed)    toast.error(`${failed} item${failed === 1 ? '' : 's'} failed to schedule`)
+    load()
+    loadAdvisor(advisorVehicle)
+  }
 
   const vehicleMap = useMemo(() => {
     const m = {}; vehicles.forEach(v => { m[v.id] = v }); return m
@@ -250,7 +339,7 @@ export default function Maintenance() {
   const showingFrom = filteredRecords.length === 0 ? 0 : pageStart + 1
   const showingTo   = Math.min(pageStart + perPage, filteredRecords.length)
 
-  const openAddModal = () => { setForm(EMPTY); setErrors({}); setModal(true) }
+  const openAddModal = (presets = {}) => { setForm({ ...EMPTY, ...presets }); setErrors({}); setModal(true) }
   const openEditModal = (r) => {
     setForm({
       id: r.id,
@@ -288,6 +377,7 @@ export default function Maintenance() {
       if (form.id) { await maintenanceAPI.update(form.id, payload); toast.success('Maintenance record updated') }
       else         { await maintenanceAPI.create(payload); toast.success('Maintenance scheduled') }
       setModal(false); setForm(EMPTY); setErrors({}); load()
+      if (String(payload.vehicle_id) === String(advisorVehicle)) loadAdvisor(advisorVehicle)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save')
     } finally { setSaving(false) }
@@ -295,7 +385,11 @@ export default function Maintenance() {
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this maintenance record?')) return
-    try { await maintenanceAPI.remove(id); toast.success('Deleted'); load() }
+    const deletedVehicleId = records.find(r => r.id === id)?.vehicle_id
+    try {
+      await maintenanceAPI.remove(id); toast.success('Deleted'); load()
+      if (String(deletedVehicleId) === String(advisorVehicle)) loadAdvisor(advisorVehicle)
+    }
     catch { toast.error('Delete failed') }
   }
 
@@ -312,15 +406,109 @@ export default function Maintenance() {
     <div className="page-enter">
       <PageHeader title="Maintenance" accent="Management" sub={`${filteredRecords.length} records`}>
         <button className="btn-icon" onClick={load} title="Refresh"><RefreshCw size={14} /></button>
-        <button className="btn btn-primary" onClick={openAddModal}><Plus size={15} /> Schedule Maintenance</button>
+        <button className="btn btn-primary" onClick={() => openAddModal()}><Plus size={15} /> Schedule Maintenance</button>
       </PageHeader>
 
       {/* KPI cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }}>
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
         <StatCard icon={Wrench} label="Total Maintenance" value={kpi.total} color="blue" sub="All time" />
         <StatCard icon={Clock} label="Upcoming" value={kpi.upcoming} color="amber" sub="Next 30 days" />
-        <StatCard icon={AlertTriangle} label="Overdue" value={kpi.overdue} color="red" sub="Requires attention" />
         <StatCard icon={CheckCircle2} label="Completed" value={kpi.completed} color="green" sub="This month" />
+      </div>
+
+      {/* AI Maintenance Advisor */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <h3 className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+            <Sparkles size={16} style={{ color: 'var(--brand)' }} /> AI Maintenance Advisor
+          </h3>
+          <select className="input" style={{ maxWidth: 260 }} value={advisorVehicle} onChange={e => setAdvisorVehicle(e.target.value)}>
+            {vehicles.length === 0 && <option value="">No vehicles</option>}
+            {vehicles.map(v => <option key={v.id} value={v.id}>{v.registration_no} — {v.make} {v.model}</option>)}
+          </select>
+        </div>
+
+        {advisorLoading ? (
+          <LoadingState label="Analysing service history…" />
+        ) : !advisor ? (
+          <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Select a vehicle to see predictions
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 }}>
+              <div style={{ background: 'var(--bg-canvas)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  <Gauge size={12} /> Current Odometer
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.05rem' }}>{advisor.odometer_km?.toLocaleString('en-IN')} km</div>
+              </div>
+              <div style={{ background: 'var(--bg-canvas)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  <TrendingUp size={12} /> Average Daily Travel
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.05rem' }}>{advisor.avg_daily_km?.toLocaleString('en-IN')} km</div>
+              </div>
+              <div style={{ background: 'var(--bg-canvas)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  <History size={12} /> Previous Services
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.05rem' }}>{advisor.service_count}</div>
+              </div>
+            </div>
+
+            {advisor.predictions.filter(p => p.urgency === 'urgent').length > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                <button className="btn btn-secondary btn-xs" style={{ borderColor: '#fecaca', color: '#dc2626' }} onClick={openBulkSchedule}>
+                  <Zap size={13} /> Schedule All Overdue ({advisor.predictions.filter(p => p.urgency === 'urgent').length})
+                </button>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: advisor.ai_insight ? 14 : 0 }}>
+              {advisor.predictions.map(p => {
+                const c = URGENCY_COLORS[p.urgency] || URGENCY_COLORS.good
+                return (
+                  <div key={p.type} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: c.bg, border: `1px solid ${c.border}`, borderRadius: 8, padding: '10px 14px',
+                  }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{p.label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ color: c.color, fontWeight: 700, fontSize: '0.82rem' }}>{p.eta_text}</span>
+                      {p.urgency === 'urgent' && (
+                        <button className="btn btn-secondary btn-xs" style={{ borderColor: c.border, color: c.color }}
+                          onClick={() => {
+                            // Overdue items (negative days_remaining) get scheduled for today;
+                            // items due within a few days get scheduled that many days out.
+                            const suggestedDate = new Date(Date.now() + Math.max(0, p.days_remaining) * 86400000)
+                              .toISOString().slice(0, 10)
+                            openAddModal({
+                              vehicle_id: advisor.vehicle_id,
+                              type: p.type,
+                              priority: 'high',
+                              scheduled_date: suggestedDate,
+                              odometer_km: advisor.odometer_km,
+                              description: `${p.label} — predicted ${p.eta_text.toLowerCase()}`,
+                            })
+                          }}>
+                          Schedule Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {advisor.ai_insight && (
+              <div style={{ background: 'var(--brand-light, #eff6ff)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: '0.83rem', color: 'var(--text-secondary)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <Sparkles size={14} style={{ color: 'var(--brand)', flexShrink: 0, marginTop: 2 }} />
+                <span>{advisor.ai_insight}</span>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Filters */}
@@ -533,6 +721,11 @@ export default function Maintenance() {
                 <input className="input" type="number" min="0" value={form.cost} onChange={f('cost')} />
               </div>
               <div className="form-group">
+                <label className="form-label">Odometer Reading (km)</label>
+                <input className="input" type="number" min="0" value={form.odometer_km} onChange={f('odometer_km')}
+                  placeholder="Reading at time of service" />
+              </div>
+              <div className="form-group">
                 <label className="form-label">Workshop Name</label>
                 <input className="input" value={form.workshop_name} onChange={f('workshop_name')} />
               </div>
@@ -590,6 +783,7 @@ export default function Maintenance() {
                 ['Scheduled Date',  formatDate(viewRecord.scheduled_date)],
                 ['Completed Date',  formatDate(viewRecord.completed_date)],
                 ['Cost',            viewRecord.cost ? `₹${parseFloat(viewRecord.cost).toLocaleString('en-IN')}` : '—'],
+                ['Odometer',        viewRecord.odometer_km ? `${parseFloat(viewRecord.odometer_km).toLocaleString('en-IN')} km` : '—'],
                 ['Next Due Date',   formatDate(viewRecord.next_due_date)],
                 ['Workshop',        viewRecord.workshop_name || '—'],
               ].map(([label, value]) => (
@@ -614,6 +808,51 @@ export default function Maintenance() {
           </Modal>
         )
       })()}
+
+      {/* Bulk schedule modal — review + confirm all overdue items for the selected vehicle */}
+      {bulkModal && (
+        <Modal
+          title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Zap size={16} style={{ color: '#dc2626' }} /> Schedule All Overdue — {vehicleMap[advisor?.vehicle_id]?.registration_no || ''}</span>}
+          onClose={() => !bulkSaving && setBulkModal(false)}
+          wide
+          footer={
+            <>
+              <button className="btn btn-secondary" disabled={bulkSaving} onClick={() => setBulkModal(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={bulkSaving} onClick={handleBulkConfirm}>
+                {bulkSaving ? 'Scheduling…' : `Confirm & Schedule (${bulkItems.filter(it => it.include).length})`}
+              </button>
+            </>
+          }
+        >
+          <p style={{ fontSize: '0.83rem', color: 'var(--text-secondary)', marginBottom: 14 }}>
+            The AI advisor flagged these as overdue. Review the date and priority for each, uncheck anything
+            you don't want scheduled yet, then confirm.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {bulkItems.map((item, idx) => (
+              <div key={item.type} style={{
+                display: 'grid', gridTemplateColumns: 'auto 1.4fr 1fr 0.8fr', gap: 12, alignItems: 'center',
+                background: item.include ? '#fef2f2' : 'var(--bg-canvas)',
+                border: `1px solid ${item.include ? '#fecaca' : 'var(--border)'}`,
+                borderRadius: 8, padding: '10px 14px', opacity: item.include ? 1 : 0.6,
+              }}>
+                <input type="checkbox" checked={item.include} onChange={e => updateBulkItem(idx, { include: e.target.checked })} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#dc2626' }}>{item.eta_text}</div>
+                </div>
+                <input className="input" type="date" value={item.scheduled_date}
+                  disabled={!item.include}
+                  onChange={e => updateBulkItem(idx, { scheduled_date: e.target.value })} />
+                <select className="input" value={item.priority} disabled={!item.include}
+                  onChange={e => updateBulkItem(idx, { priority: e.target.value })}>
+                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

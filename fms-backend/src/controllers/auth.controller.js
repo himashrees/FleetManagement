@@ -7,29 +7,25 @@ const { sendPasswordResetEmail } = require('../utils/mailer');
  * Register a new user.
  *
  * Roles & Permissions rule:
- *  - The very first user in the system (empty Users table) may register as
- *    "admin" — this is how you bootstrap your initial admin account.
- *  - After that, public self-registration is only allowed for the "driver"
- *    role. Creating "admin" or "manager" accounts requires an existing
- *    authenticated admin to do it on the user's behalf via
- *    POST /api/auth/register-staff (see exports.registerStaff below).
- *  - This prevents anyone from registering themselves as admin/manager
- *    through the public signup form.
+ *  - Public self-registration allows choosing "driver", "admin", or
+ *    "manager" directly from the signup form.
+ *  - Note: this means anyone with access to the /register page can create
+ *    an admin account. Staff accounts can also still be created by an
+ *    existing authenticated admin via POST /api/auth/register-staff (see
+ *    exports.registerStaff below), which remains available as an internal
+ *    alternative.
  */
 exports.register = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
     let { role } = req.body;
 
+    if (!['admin', 'manager', 'driver'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Role must be admin, manager, or driver' });
+    }
+
     const existing = await User.findOne({ where: { email } });
     if (existing) return res.status(400).json({ success: false, message: 'Email already registered' });
-
-    const userCount = await User.count();
-    if (userCount === 0) {
-      role = 'admin'; // bootstrap: first account in the system becomes admin
-    } else {
-      role = 'driver'; // public registration can only ever create drivers
-    }
 
     const hashedPassword = await bcrypt.hash(password, 12);
     const user = await User.create({ name, email, password: hashedPassword, role, phone });

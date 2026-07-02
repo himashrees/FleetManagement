@@ -24,6 +24,7 @@ export const authAPI = {
   me:             ()     => api.get('/auth/me'),
   forgotPassword: (data) => api.post('/auth/forgot-password', data),
   resetPassword:  (data) => api.post('/auth/reset-password', data),
+  changePassword: (data) => api.put('/auth/change-password', data),
 }
 
 export const vehicleAPI = {
@@ -62,6 +63,7 @@ export const gpsAPI = {
 export const maintenanceAPI = {
   getAll:      (params)   => api.get('/maintenance', { params }),
   getUpcoming: ()         => api.get('/maintenance/upcoming'),
+  predict:     (vehicleId) => api.get(`/maintenance/predict/${vehicleId}`),
   create:      (data)     => api.post('/maintenance', data),
   update:      (id, data) => api.put(`/maintenance/${id}`, data),
   remove:      (id)       => api.delete(`/maintenance/${id}`),

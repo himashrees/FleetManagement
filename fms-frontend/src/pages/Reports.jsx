@@ -1,14 +1,31 @@
 import { useState, useEffect } from 'react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { reportAPI } from '../services/api'
 import { Truck, Users, Route, Wrench, RefreshCw, Sparkles, AlertTriangle, TrendingUp, DollarSign } from 'lucide-react'
-import { LoadingState, PageHeader } from '../components/Common'
+import { LoadingState, PageHeader, KpiCards } from '../components/Common'
 
-const COLORS = ['#1d4ed8', '#0284c7', '#16a34a', '#7c3aed', '#dc2626']
-
-const tooltipStyle = {
-  contentStyle: { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
+/* KPI color palette (scoped to this page — doesn't affect other pages) */
+const REPORTS_KPI_PALETTE = {
+  blue:  { accent: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', glow: 'rgba(29,78,216,0.35)' },
+  green: { accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.35)' },
+  red:   { accent: '#dc2626', bg: '#fee2e2', border: '#fecaca', glow: 'rgba(220,38,38,0.35)' },
 }
+
+/* CSS for the "moving" glow on the cards below the KPI row */
+const REPORT_CARD_CSS = `
+  @keyframes report-card-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); }
+  }
+  .report-card {
+    animation: report-card-float 6s ease-in-out infinite;
+    transition: box-shadow 0.25s ease;
+    border: 1px solid #bfdbfe;
+    box-shadow: 0 0 14px 0px rgba(29,78,216,0.16), 0 1px 3px rgba(15,23,42,0.04);
+  }
+  .report-card:hover {
+    box-shadow: 0 0 24px 2px rgba(29,78,216,0.28), 0 8px 20px rgba(15,23,42,0.08);
+  }
+`
 
 // ── AI Insight card: parses bullets, tags [RISK]/[SAVE]/[GOOD] with icons ──
 function tagStyle(tag) {
@@ -114,20 +131,10 @@ export default function Reports() {
   useEffect(() => { load() }, [])
 
   const summaryCards = summary ? [
-    { label: 'Total Vehicles', value: summary.totalVehicles, sub: `${summary.activeVehicles} active`, icon: Truck, color: 'blue' },
-    { label: 'Total Drivers', value: summary.totalDrivers, sub: `${summary.availableDrivers} available`, icon: Users, color: 'blue' },
-    { label: 'Trips Today', value: summary.tripsToday, sub: 'this session', icon: Route, color: 'green' },
-    { label: 'Maintenance Due', value: summary.maintenanceDue, sub: 'overdue tasks', icon: Wrench, color: summary.maintenanceDue > 0 ? 'red' : 'green' },
-  ] : []
-
-  const fleetStatusData = summary ? [
-    { name: 'Active', value: summary.activeVehicles || 0 },
-    { name: 'Inactive', value: (summary.totalVehicles - summary.activeVehicles) || 0 },
-  ] : []
-
-  const driverStatusData = summary ? [
-    { name: 'Available', value: summary.availableDrivers || 0 },
-    { name: 'Engaged', value: (summary.totalDrivers - summary.availableDrivers) || 0 },
+    { label: 'Total Vehicles',  value: summary.totalVehicles,  sub: `${summary.activeVehicles} active`,      Icon: Truck,  ...REPORTS_KPI_PALETTE.blue },
+    { label: 'Total Drivers',   value: summary.totalDrivers,   sub: `${summary.availableDrivers} available`, Icon: Users,  ...REPORTS_KPI_PALETTE.blue },
+    { label: 'Trips Today',     value: summary.tripsToday,     sub: 'this session',                          Icon: Route,  ...REPORTS_KPI_PALETTE.green },
+    { label: 'Maintenance Due', value: summary.maintenanceDue, sub: 'overdue tasks',                          Icon: Wrench, ...REPORTS_KPI_PALETTE[summary.maintenanceDue > 0 ? 'red' : 'green'] },
   ] : []
 
   const rowStyle = { display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--bg-canvas)', borderRadius: 'var(--radius)' }
@@ -145,25 +152,17 @@ export default function Reports() {
         <LoadingState label="Generating reports…" />
       ) : (
         <>
-          <div className="stats-grid">
-            {summaryCards.map((s, i) => (
-              <div key={i} className={`stat-card ${s.color}`}>
-                <div className={`stat-icon ${s.color}`}><s.icon size={18} /></div>
-                <div className="stat-label">{s.label}</div>
-                <div className="stat-value">{s.value ?? '—'}</div>
-                <div className="stat-sub">{s.sub}</div>
-              </div>
-            ))}
-          </div>
+          <style>{REPORT_CARD_CSS}</style>
+          <KpiCards columns={4} stats={summaryCards} />
 
           {/* Fleet summary AI insight */}
-          <div className="card" style={{ marginBottom: '16px' }}>
+          <div className="card report-card" style={{ marginBottom: '16px', animationDelay: '0s' }}>
             <h3 className="chart-title" style={{ marginBottom: 0 }}>Fleet Health Briefing</h3>
             <AIInsightCard title="Fleet Insight" text={summary?.ai_insight} loading={loading} />
           </div>
 
           {/* Executive Summary — last 7 days, pulled from /reports/executive */}
-          <div className="card" style={{ marginBottom: '16px', border: '1px solid #e0e7ff' }}>
+          <div className="card report-card" style={{ marginBottom: '16px', animationDelay: '0.15s' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <Sparkles size={16} style={{ color: '#7c3aed' }} />
               <h3 className="chart-title" style={{ marginBottom: 0 }}>Executive Summary</h3>
@@ -188,7 +187,7 @@ export default function Reports() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-            <div className="card">
+            <div className="card report-card" style={{ animationDelay: '0.3s' }}>
               <h3 className="chart-title" style={{ marginBottom: '14px' }}>Fuel Report</h3>
               {fuelReport && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -209,7 +208,7 @@ export default function Reports() {
               <AIInsightCard title="Fuel Insight" text={fuelReport?.ai_insight} loading={loading} />
             </div>
 
-            <div className="card">
+            <div className="card report-card" style={{ animationDelay: '0.3s' }}>
               <h3 className="chart-title" style={{ marginBottom: '14px' }}>Trip Report</h3>
               {tripReport && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -233,33 +232,6 @@ export default function Reports() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div className="card">
-              <h3 className="chart-title" style={{ marginBottom: '8px' }}>Vehicle Status Distribution</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={fleetStatusData} cx="50%" cy="50%" outerRadius={80} innerRadius={45} paddingAngle={4} dataKey="value">
-                    {fleetStatusData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="card">
-              <h3 className="chart-title" style={{ marginBottom: '8px' }}>Driver Status Distribution</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={driverStatusData} cx="50%" cy="50%" outerRadius={80} innerRadius={45} paddingAngle={4} dataKey="value">
-                    {driverStatusData.map((_, i) => <Cell key={i} fill={COLORS[i + 1]} />)}
-                  </Pie>
-                  <Tooltip {...tooltipStyle} />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
         </>
       )}
     </div>

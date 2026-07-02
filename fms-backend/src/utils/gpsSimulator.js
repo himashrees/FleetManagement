@@ -10,6 +10,7 @@
 // real device hitting the push endpoint.
 
 const { GpsLog, Vehicle } = require('../models');
+const { checkSpeedAlert } = require('./speedAlert');
 
 const TICK_MS = 3000;       // how often vehicles "move"
 const BASE_LAT = 12.9716;   // Bengaluru city center — change to your city
@@ -27,6 +28,23 @@ function randomStart() {
     heading: Math.random() * 360,
     speed: 0,
   };
+}
+
+// When a vehicle newly starts a trip, it should pick up from wherever it was
+// actually last parked, not teleport to a random point across the city.
+// Only vehicles with zero GPS history (brand new, never tracked) fall back
+// to a random starting point.
+async function startStateFor(vehicleId) {
+  const lastLog = await GpsLog.findOne({ where: { vehicle_id: vehicleId }, order: [['logged_at', 'DESC']] });
+  if (lastLog) {
+    return {
+      lat: parseFloat(lastLog.latitude),
+      lng: parseFloat(lastLog.longitude),
+      heading: lastLog.heading != null ? lastLog.heading : Math.random() * 360,
+      speed: 0,
+    };
+  }
+  return randomStart();
 }
 
 // Move a vehicle forward along its heading, with small random turns and
@@ -68,11 +86,24 @@ function step(state) {
 
 async function tick() {
   try {
-    const vehicles = await Vehicle.findAll({ where: { status: 'active' }, attributes: ['id', 'registration_no'] });
+    // Only vehicles actually on a trip should be "driving" — a parked vehicle
+    // has no business generating new positions every 3 seconds. This was the
+    // bug: filtering on status alone kept moving every active vehicle whether
+    // or not it was assigned to a trip.
+    const vehicles = await Vehicle.findAll({ where: { status: 'active', on_trip: true }, attributes: ['id', 'registration_no', 'type', 'make', 'model', 'on_trip'] });
+    const onTripIds = new Set(vehicles.map(v => v.id));
+
+    // Drop in-memory state for vehicles that are no longer on a trip so they
+    // don't silently resume mid-route the instant they're dispatched again —
+    // and so the map doesn't hold state for vehicles forever.
+    for (const id of vehicleState.keys()) {
+      if (!onTripIds.has(id)) vehicleState.delete(id);
+    }
+
     const snapshot = [];
 
     for (const v of vehicles) {
-      if (!vehicleState.has(v.id)) vehicleState.set(v.id, randomStart());
+      if (!vehicleState.has(v.id)) vehicleState.set(v.id, await startStateFor(v.id));
       const state = step(vehicleState.get(v.id));
 
       const log = await GpsLog.create({
@@ -91,6 +122,8 @@ async function tick() {
           speed_kmh: state.speed,
         });
       }
+
+      checkSpeedAlert(ioRef, v.id, state.speed).catch(() => {}); // fire-and-forget, doesn't block the tick
 
       snapshot.push({ vehicle: v, position: log });
     }

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { User, Truck, FileText, Eye, Download, RefreshCw, FileWarning, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { User, Truck, FileText, Eye, Download, RefreshCw, FileWarning, Clock, Upload, X, UploadCloud } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { driverAPI, documentAPI, tripAPI } from '../services/api'
@@ -10,6 +10,7 @@ const fileUrl  = (fp) => { if (!fp) return null; if (fp.startsWith('http')) retu
 
 const TYPE_COLORS = { insurance: '#3b82f6', registration: '#10b981', permit: '#f59e0b', license: '#8b5cf6', pollution: '#06b6d4', other: '#64748b' }
 const TYPE_LABELS = { insurance: 'Insurance', registration: 'Registration', permit: 'Permit', license: 'License', pollution: 'Compliance', other: 'Other' }
+const IMAGE_EXTS  = ['png', 'jpg', 'jpeg', 'gif', 'webp']
 
 const daysUntil = (e) => e ? Math.ceil((new Date(e) - new Date()) / 86400000) : null
 const getStatus = (e) => { const d = daysUntil(e); if (d === null) return 'permanent'; if (d < 0) return 'expired'; if (d <= 30) return 'expiring'; return 'valid' }
@@ -27,7 +28,146 @@ function StatusBadge({ expiry }) {
   return <span style={{ fontSize: '0.76rem', fontWeight: 700, padding: '4px 12px', borderRadius: 999, background: meta.bg, color: meta.color, display: 'inline-block', whiteSpace: 'nowrap' }}>{meta.label}</span>
 }
 
-function DocTable({ title, icon: Icon, iconColor, iconBg, docs, onView }) {
+/* ── Upload / Renew modal ── */
+function UploadModal({ context, onClose, onDone }) {
+  const toast = useToast()
+  const { entityType, entityId, prefill } = context
+  const [form, setForm] = useState({
+    title:       prefill?.title || '',
+    type:        prefill?.type || (entityType === 'driver' ? 'license' : 'insurance'),
+    document_no: prefill?.document_no || '',
+    issued_date: '',
+    expiry_date: '',
+  })
+  const [file, setFile]           = useState(null)
+  const [extracting, setExtracting] = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [dragOver, setDragOver]     = useState(false)
+
+  const f = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }))
+
+  const runExtraction = async (picked) => {
+    setExtracting(true)
+    try {
+      const fd = new FormData(); fd.append('file', picked)
+      const res  = await fetch(`${API_BASE}/api/documents/extract-dates`, { method: 'POST', credentials: 'include', body: fd })
+      const json = await res.json()
+      if (json.success && json.data) {
+        const d = json.data
+        setForm(prev => ({
+          ...prev,
+          ...(d.title       && !prefill?.title ? { title: d.title } : {}),
+          ...(d.document_no && !prefill?.document_no ? { document_no: d.document_no } : {}),
+          ...(d.issued_date ? { issued_date: d.issued_date } : {}),
+          ...(d.expiry_date ? { expiry_date: d.expiry_date } : {}),
+        }))
+        toast.success('Auto-filled details from the document')
+      }
+    } catch { /* silent — fields stay editable */ }
+    finally { setExtracting(false) }
+  }
+
+  const pickFile = (picked) => {
+    if (!picked) return
+    setFile(picked)
+    const ext = picked.name.split('.').pop().toLowerCase()
+    if (ext === 'pdf' || IMAGE_EXTS.includes(ext)) runExtraction(picked)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!file) { toast.error('Please choose a file to upload'); return }
+    if (!form.title.trim()) { toast.error('Title is required'); return }
+    setSaving(true)
+    try {
+      const fd = new FormData()
+      fd.append('title', form.title)
+      fd.append('type', form.type)
+      if (form.document_no) fd.append('document_no', form.document_no)
+      if (form.issued_date) fd.append('issued_date', form.issued_date)
+      if (form.expiry_date) fd.append('expiry_date', form.expiry_date)
+      fd.append(entityType === 'driver' ? 'driver_id' : 'vehicle_id', entityId)
+      fd.append('file', file)
+      await documentAPI.upload(fd)
+      toast.success('Document uploaded — visible in Document Management too')
+      onDone()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Upload failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+          <span style={{ fontWeight: 700, fontSize: '1rem' }}>{prefill ? 'Renew Document' : 'Upload Document'}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex' }}><X size={18} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Dropzone */}
+          <label
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); pickFile(e.dataTransfer.files?.[0]) }}
+            style={{
+              border: `2px dashed ${dragOver ? '#3b82f6' : '#d1d5db'}`, borderRadius: 10, padding: '22px 14px',
+              textAlign: 'center', cursor: 'pointer', background: dragOver ? '#eff6ff' : '#f9fafb',
+            }}
+          >
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" style={{ display: 'none' }}
+              onChange={e => pickFile(e.target.files?.[0])} />
+            <UploadCloud size={24} color={file ? '#10b981' : '#9ca3af'} style={{ marginBottom: 6 }} />
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>
+              {file ? file.name : 'Click or drag a file to upload'}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 2 }}>
+              {extracting ? 'Scanning document…' : 'PDF, PNG, or JPG'}
+            </div>
+          </label>
+
+          <div className="form-group">
+            <label className="form-label">Title</label>
+            <input className="input" value={form.title} onChange={f('title')} placeholder="e.g. Driving Licence Renewal" required />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Document type</label>
+              <select className="input" value={form.type} onChange={f('type')}>
+                {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Document No.</label>
+              <input className="input" value={form.document_no} onChange={f('document_no')} placeholder="Optional" />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Issue date</label>
+              <input className="input" type="date" value={form.issued_date} onChange={f('issued_date')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Expiry date</label>
+              <input className="input" type="date" value={form.expiry_date} onChange={f('expiry_date')} />
+            </div>
+          </div>
+
+          <button type="submit" className="btn btn-primary" disabled={saving || extracting} style={{ justifyContent: 'center', padding: '11px', marginTop: 4 }}>
+            {saving ? 'Uploading…' : <><Upload size={15} /> Upload Document</>}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function DocTable({ title, icon: Icon, iconColor, iconBg, docs, onView, onRenew, onUpload, canUpload }) {
   const th = { padding: '11px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: '0.78rem', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }
   const td = { padding: '13px 16px', borderBottom: '1px solid #f1f5f9', fontSize: '0.84rem', verticalAlign: 'middle' }
 
@@ -40,6 +180,11 @@ function DocTable({ title, icon: Icon, iconColor, iconBg, docs, onView }) {
         </div>
         <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>{title}</h2>
         <span style={{ fontSize: '0.78rem', color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>{docs.length}</span>
+        {canUpload && (
+          <button onClick={onUpload} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 700, color: '#fff', background: '#3b82f6', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>
+            <Upload size={13} /> Upload
+          </button>
+        )}
       </div>
 
       {docs.length === 0 ? (
@@ -59,6 +204,8 @@ function DocTable({ title, icon: Icon, iconColor, iconBg, docs, onView }) {
             <tbody>
               {docs.map(d => {
                 const url = fileUrl(d.file_path)
+                const status = getStatus(d.expiry_date)
+                const needsRenewal = ['expired', 'expiring'].includes(status)
                 return (
                   <tr key={d.id} style={{ transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
@@ -79,20 +226,30 @@ function DocTable({ title, icon: Icon, iconColor, iconBg, docs, onView }) {
                     <td style={{ ...td, color: '#64748b' }}>{d.expiry_date ? fmtDate(d.expiry_date) : '—'}</td>
                     <td style={td}><StatusBadge expiry={d.expiry_date} /></td>
                     <td style={td}>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {url ? (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {url && (
                           <button onClick={() => onView(d.file_path)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 12px', cursor: 'pointer' }}>
                             <Eye size={13} /> View
                           </button>
-                        ) : (
-                          <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>No file</span>
                         )}
                         {url && (
                           <a href={url} download
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 600, color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 12px', textDecoration: 'none' }}>
                             <Download size={13} /> Download
                           </a>
+                        )}
+                        {canUpload && (
+                          <button onClick={() => onRenew(d)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 700,
+                              color: needsRenewal ? '#fff' : '#374151',
+                              background: needsRenewal ? '#dc2626' : '#fff',
+                              border: needsRenewal ? 'none' : '1px solid #e2e8f0',
+                              borderRadius: 7, padding: '5px 12px', cursor: 'pointer',
+                            }}>
+                            <Upload size={13} /> Renew
+                          </button>
                         )}
                       </div>
                     </td>
@@ -115,6 +272,7 @@ export default function MyDocuments() {
   const [vehicleDocs, setVehicleDocs] = useState([])
   const [loading,     setLoading]     = useState(true)
   const [previewUrl,  setPreviewUrl]  = useState(null)
+  const [uploadCtx,   setUploadCtx]   = useState(null) // { entityType, entityId, prefill? }
 
   const load = () => {
     if (!user?.driverId) { setLoading(false); return }
@@ -175,6 +333,9 @@ export default function MyDocuments() {
   }
   const closePreview = () => { if (previewUrl?.blobUrl) URL.revokeObjectURL(previewUrl.blobUrl); setPreviewUrl(null) }
 
+  const closeUpload = () => setUploadCtx(null)
+  const onUploadDone = () => { setUploadCtx(null); load() }
+
   if (loading) return <LoadingState label="Loading your documents…" />
 
   if (!user?.driverId) return (
@@ -197,7 +358,7 @@ export default function MyDocuments() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, color: '#111827' }}>My Documents</h1>
-          <p style={{ fontSize: '0.84rem', color: '#6b7280', margin: '4px 0 0' }}>View your driver and vehicle documents</p>
+          <p style={{ fontSize: '0.84rem', color: '#6b7280', margin: '4px 0 0' }}>View, upload, and renew your driver and vehicle documents</p>
         </div>
         <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: '0.83rem', color: '#374151', fontWeight: 600 }}>
           <RefreshCw size={13} /> Refresh
@@ -208,10 +369,11 @@ export default function MyDocuments() {
       {warnings.length > 0 && (
         <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: '12px 16px', marginBottom: 20, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <Clock size={16} color="#ca8a04" style={{ marginTop: 1, flexShrink: 0 }} />
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#854d0e', marginBottom: 4 }}>Attention Required</div>
             <div style={{ fontSize: '0.82rem', color: '#92400e' }}>
               {warnings.map(d => `${d.title} (${getStatus(d.expiry_date) === 'expired' ? 'EXPIRED' : `expires ${fmtDate(d.expiry_date)}`})`).join(' · ')}
+              {' — use the '}<strong>Renew</strong>{' button below to upload an updated copy.'}
             </div>
           </div>
         </div>
@@ -256,6 +418,9 @@ export default function MyDocuments() {
         iconBg="#eff6ff"
         docs={driverDocs}
         onView={openPreview}
+        canUpload
+        onUpload={() => setUploadCtx({ entityType: 'driver', entityId: user.driverId })}
+        onRenew={(d) => setUploadCtx({ entityType: 'driver', entityId: user.driverId, prefill: d })}
       />
 
       {/* Vehicle Documents */}
@@ -266,7 +431,15 @@ export default function MyDocuments() {
         iconBg="#eff6ff"
         docs={vehicleDocs}
         onView={openPreview}
+        canUpload={!!vehicle}
+        onUpload={() => vehicle && setUploadCtx({ entityType: 'vehicle', entityId: vehicle.id })}
+        onRenew={(d) => vehicle && setUploadCtx({ entityType: 'vehicle', entityId: vehicle.id, prefill: d })}
       />
+
+      {/* Upload / Renew Modal */}
+      {uploadCtx && (
+        <UploadModal context={uploadCtx} onClose={closeUpload} onDone={onUploadDone} />
+      )}
 
       {/* Preview Modal */}
       {previewUrl && (

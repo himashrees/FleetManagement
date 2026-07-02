@@ -185,7 +185,7 @@
 //       {/* Map */}
 //       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '16px' }}>
 //         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-//           <Map size={14} color="var(--brand)" />
+//           <MapIcon size={14} color="var(--brand)" />
 //           <span className="chart-title">Live Map</span>
 //           {selected && history.length > 0 && (
 //             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--brand)', marginLeft: 'auto' }}>
@@ -350,7 +350,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
-import { MapPin, RefreshCw, Navigation, Activity, Zap, Map, Truck, Clock, AlertTriangle, TrendingUp, Eye, X, ChevronRight, Wifi, WifiOff, Satellite, Play, Square } from 'lucide-react'
+import { MapPin, RefreshCw, Navigation, Activity, Zap, Map as MapIcon, Truck, Clock, AlertTriangle, Wifi, WifiOff, Play, Square } from 'lucide-react'
 import { gpsAPI, vehicleAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
@@ -473,19 +473,16 @@ function speedColor(kmh) {
 }
 
 // ── Vehicle card ───────────────────────────────────────────────────────────
-function VehicleCard({ p, isSelected, onClick }) {
+function VehicleCard({ p }) {
   const sp = p.position.speed_kmh || 0
   const sc = speedColor(sp)
   return (
     <div
-      onClick={onClick}
       style={{
-        cursor: 'pointer',
-        background: isSelected ? 'var(--brand-light)' : 'var(--bg-surface)',
-        border: `1.5px solid ${isSelected ? 'var(--brand)' : 'var(--border)'}`,
+        background: 'var(--bg-surface)',
+        border: '1.5px solid var(--border)',
         borderRadius: 'var(--radius)',
         padding: '12px 14px',
-        transition: 'border-color 0.15s, background 0.15s',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -520,13 +517,10 @@ function VehicleCard({ p, isSelected, onClick }) {
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
         <span style={{ fontSize: '0.71rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
           <Clock size={10} style={{ marginRight: 4, verticalAlign: -1 }} />
           {new Date(p.position.logged_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-        </span>
-        <span style={{ fontSize: '0.71rem', color: isSelected ? 'var(--brand)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3 }}>
-          {isSelected ? 'Viewing history' : 'View history'} <ChevronRight size={11} />
         </span>
       </div>
     </div>
@@ -538,9 +532,6 @@ export default function GpsTracking() {
   const [positions, setPositions] = useState([])
   const [vehicles, setVehicles] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState(null)
-  const [history, setHistory] = useState([])
-  const [historyLoading, setHistoryLoading] = useState(false)
   const [pushForm, setPushForm] = useState({ vehicle_id: '', latitude: '', longitude: '', speed_kmh: '' })
   const [showPush, setShowPush] = useState(false)
   const [mapReady, setMapReady] = useState(false)
@@ -555,14 +546,56 @@ export default function GpsTracking() {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const markersRef = useRef({})
-  const routeLineRef = useRef(null)
-  const startMarkerRef = useRef(null)
-  const endMarkerRef = useRef(null)
+
+  // ── Idle-duration tracking ──────────────────────────────────────────────
+  // A vehicle only counts as "Idle" once its speed has stayed below the
+  // moving threshold continuously for 2+ minutes (per the KPI spec) — a
+  // vehicle that just slowed down (e.g. at a red light) shouldn't flicker
+  // into the Idle bucket immediately. We track, per vehicle, the timestamp
+  // it first dropped below the threshold; once that's been true for 2+ min
+  // AND it's still reporting fresh GPS data ("GPS online"), it's Idle.
+  const MOVING_THRESHOLD_KMH = 5
+  const IDLE_SUSTAIN_MS = 2 * 60 * 1000
+  const GPS_ONLINE_WINDOW_MS = 2 * 60 * 1000 // no update in 2min = considered offline, not idle
+  const belowThresholdSinceRef = useRef(new Map()) // vehicle_id -> timestamp
+
+  useEffect(() => {
+    const now = Date.now()
+    const tracker = belowThresholdSinceRef.current
+    const seenIds = new Set()
+    positions.forEach(p => {
+      const id = p.vehicle.id
+      seenIds.add(id)
+      const speed = p.position.speed_kmh || 0
+      if (speed < MOVING_THRESHOLD_KMH) {
+        if (!tracker.has(id)) tracker.set(id, now)
+      } else {
+        tracker.delete(id)
+      }
+    })
+    // Drop vehicles no longer in the live set
+    Array.from(tracker.keys()).forEach(id => { if (!seenIds.has(id)) tracker.delete(id) })
+  }, [positions])
+
+  // Re-render every 10s so idle counts that cross the 2-minute mark update
+  // even without a new GPS position arriving.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => forceTick(n => n + 1), 10000)
+    return () => clearInterval(t)
+  }, [])
 
   // ── Derived stats ──────────────────────────────────────────────────────
-  const moving = positions.filter(p => (p.position.speed_kmh || 0) > 0).length
+  const now = Date.now()
+  const moving = positions.filter(p => (p.position.speed_kmh || 0) > MOVING_THRESHOLD_KMH).length
   const speeding = positions.filter(p => (p.position.speed_kmh || 0) > 80).length
-  const idle = positions.length - moving
+  const idle = positions.filter(p => {
+    const id = p.vehicle.id
+    const since = belowThresholdSinceRef.current.get(id)
+    if (!since) return false
+    const gpsOnline = (now - new Date(p.position.logged_at).getTime()) < GPS_ONLINE_WINDOW_MS
+    return gpsOnline && (now - since) >= IDLE_SUSTAIN_MS
+  }).length
 
   // ── Load Leaflet ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -623,9 +656,8 @@ export default function GpsTracking() {
       const id = String(p.vehicle.id)
       const lat = parseFloat(p.position.latitude)
       const lng = parseFloat(p.position.longitude)
-      const isSelected = selected === p.vehicle.id
       const sp = p.position.speed_kmh || 0
-      const { svgStr, size, color } = getVehicleIcon(p.vehicle, isSelected, sp)
+      const { svgStr, size, color } = getVehicleIcon(p.vehicle, false, sp)
 
       // Pulse ring for moving vehicles
       const pulseHtml = sp > 0 ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${size[0]+16}px;height:${size[1]+16}px;border-radius:50%;border:2px solid ${color};opacity:0.4;animation:gps-pulse 2s infinite;pointer-events:none;"></div>` : ''
@@ -653,9 +685,6 @@ export default function GpsTracking() {
             <span style="color:#888">Lng</span><span>${lng.toFixed(6)}</span>
             <span style="color:#888">Updated</span><span style="color:#888;font-size:11px">${new Date(p.position.logged_at).toLocaleString('en-IN')}</span>
           </div>
-          <div style="margin-top:8px;padding-top:6px;border-top:1px solid #eee;color:#1d4ed8;cursor:pointer;font-size:11px">
-            Click marker to view 24h route →
-          </div>
         </div>`
 
       if (markersRef.current[id]) {
@@ -665,53 +694,17 @@ export default function GpsTracking() {
         const marker = L.marker([lat, lng], { icon })
           .addTo(map)
           .bindPopup(popupContent, { maxWidth: 220 })
-        marker.on('click', () => loadHistory(p.vehicle.id))
         markersRef.current[id] = marker
       }
     })
 
-    if (positions.length > 0 && !selected) {
+    if (positions.length > 0) {
       const group = L.featureGroup(Object.values(markersRef.current))
       if (Object.values(markersRef.current).length > 0) {
         map.fitBounds(group.getBounds().pad(0.25))
       }
     }
-  }, [positions, mapReady, selected])
-
-  // ── Draw route with start/end markers ─────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !L) return
-    if (routeLineRef.current) { mapInstanceRef.current.removeLayer(routeLineRef.current); routeLineRef.current = null }
-    if (startMarkerRef.current) { mapInstanceRef.current.removeLayer(startMarkerRef.current); startMarkerRef.current = null }
-    if (endMarkerRef.current) { mapInstanceRef.current.removeLayer(endMarkerRef.current); endMarkerRef.current = null }
-    if (history.length < 2) return
-
-    const coords = history.map(h => [parseFloat(h.latitude), parseFloat(h.longitude)])
-
-    routeLineRef.current = L.polyline(coords, {
-      color: '#1d4ed8', weight: 4, opacity: 0.85, dashArray: '8,5',
-    }).addTo(mapInstanceRef.current)
-
-    // Start marker (green flag)
-    startMarkerRef.current = L.marker(coords[0], {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="background:#16a34a;color:#fff;font-size:10px;font-weight:700;padding:4px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">START</div>`,
-        iconAnchor: [20, 12],
-      })
-    }).addTo(mapInstanceRef.current)
-
-    // End marker (red flag)
-    endMarkerRef.current = L.marker(coords[coords.length - 1], {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:4px 7px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)">LAST</div>`,
-        iconAnchor: [16, 12],
-      })
-    }).addTo(mapInstanceRef.current)
-
-    mapInstanceRef.current.fitBounds(routeLineRef.current.getBounds().pad(0.25))
-  }, [history])
+  }, [positions, mapReady])
 
   const load = () => {
     gpsAPI.getLive()
@@ -780,19 +773,6 @@ export default function GpsTracking() {
     }
   }
 
-  const loadHistory = (vehicleId) => {
-    setSelected(vehicleId)
-    setHistoryLoading(true)
-    const to = new Date().toISOString()
-    const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    gpsAPI.getHistory(vehicleId, { from, to })
-      .then(r => setHistory(r.data.data || []))
-      .catch(() => toast.error('Failed to load history'))
-      .finally(() => setHistoryLoading(false))
-  }
-
-  const clearSelection = () => { setSelected(null); setHistory([]) }
-
   const handlePush = async () => {
     try {
       await gpsAPI.push(pushForm)
@@ -805,8 +785,6 @@ export default function GpsTracking() {
   }
 
   const pf = (k) => (e) => setPushForm(p => ({ ...p, [k]: e.target.value }))
-
-  const selectedVehicle = positions.find(p => p.vehicle.id === selected)
 
   return (
     <div className="page-enter">
@@ -870,19 +848,14 @@ export default function GpsTracking() {
           gap: '10px',
           background: 'var(--bg-surface)',
         }}>
-          <Map size={14} color="var(--brand)" />
+          <MapIcon size={14} color="var(--brand)" />
           <span className="chart-title" style={{ flex: 1 }}>
             Live Map
-            {selected && history.length > 0 && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--brand)', marginLeft: '10px' }}>
-                — 24h route: {selectedVehicle?.vehicle.registration_no}
-              </span>
-            )}
           </span>
 
           {/* Legend */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            {[['#16a34a', 'Moving'], ['#f59e0b', 'Idle'], ['#dc2626', 'Speeding'], ['#1d4ed8', 'Selected']].map(([c, l]) => (
+            {[['#16a34a', 'Moving'], ['#f59e0b', 'Idle'], ['#dc2626', 'Speeding']].map(([c, l]) => (
               <div key={l} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: c }} />
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{l}</span>
@@ -913,16 +886,6 @@ export default function GpsTracking() {
             ))}
           </div>
 
-          {selected && (
-            <button
-              className="btn-icon"
-              style={{ width: 24, height: 24, fontSize: 13 }}
-              onClick={clearSelection}
-              title="Clear selection"
-            >
-              <X size={13} />
-            </button>
-          )}
         </div>
 
         <div ref={mapRef} style={{ height: '460px', width: '100%', background: '#e2e8f0' }}>
@@ -935,8 +898,8 @@ export default function GpsTracking() {
         </div>
       </div>
 
-      {/* ── Bottom section: vehicle list + history ─────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: '16px' }}>
+      {/* ── Live vehicle list ─────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
 
         {/* Vehicle list */}
         <div>
@@ -962,100 +925,11 @@ export default function GpsTracking() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {positions.map((p, i) => (
-                <VehicleCard
-                  key={i}
-                  p={p}
-                  isSelected={selected === p.vehicle.id}
-                  onClick={() => selected === p.vehicle.id ? clearSelection() : loadHistory(p.vehicle.id)}
-                />
+                <VehicleCard key={i} p={p} />
               ))}
             </div>
           )}
         </div>
-
-        {/* History panel */}
-        {selected && (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={14} color="var(--brand)" />
-                <span className="chart-title">
-                  24h Route — {selectedVehicle?.vehicle.registration_no || `#${selected}`}
-                </span>
-              </div>
-              <button className="btn-icon" style={{ width: 22, height: 22, fontSize: 12 }} onClick={clearSelection}>
-                <X size={13} />
-              </button>
-            </div>
-
-            {/* Route summary */}
-            {!historyLoading && history.length > 0 && (() => {
-              const speeds = history.map(h => h.speed_kmh || 0).filter(s => s > 0)
-              const maxSpd = speeds.length ? Math.max(...speeds) : 0
-              const avgSpd = speeds.length ? Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length) : 0
-              return (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                  {[['Points', history.length, '#6366f1'], ['Max spd', `${maxSpd}`, '#dc2626'], ['Avg spd', `${avgSpd}`, '#16a34a']].map(([l, v, c]) => (
-                    <div key={l} style={{ background: 'var(--bg-canvas)', borderRadius: 'var(--radius)', padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: '2px' }}>{l}</div>
-                      <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: c }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
-
-            {historyLoading ? (
-              <LoadingState label="Loading route…" />
-            ) : history.length === 0 ? (
-              <EmptyState title="No movement in past 24h" sub="Vehicle was stationary or offline" />
-            ) : (
-              <div className="table-container" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>#</th>
-                      <th style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>Time</th>
-                      <th style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>Latitude</th>
-                      <th style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>Longitude</th>
-                      <th style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>Speed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((h, i) => {
-                      const sc = speedColor(h.speed_kmh || 0)
-                      return (
-                        <tr key={i}>
-                          <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{i + 1}</span></td>
-                          <td>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                              {new Date(h.logged_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                            </span>
-                          </td>
-                          <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{parseFloat(h.latitude).toFixed(5)}</span></td>
-                          <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{parseFloat(h.longitude).toFixed(5)}</span></td>
-                          <td>
-                            {h.speed_kmh > 0 ? (
-                              <span style={{
-                                fontFamily: 'var(--font-mono)', fontSize: '0.78rem',
-                                color: sc.color, fontWeight: 600,
-                                background: sc.bg, padding: '2px 6px', borderRadius: '100px'
-                              }}>
-                                {h.speed_kmh} km/h
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>idle</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ── Push location modal ────────────────────────────────────────── */}

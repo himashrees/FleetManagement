@@ -4,6 +4,7 @@ import { ToastProvider } from './context/ToastContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ChangePassword from './pages/ChangePassword'
 import ForgotPassword from './pages/Forgotpassword'
 import ResetPassword from './pages/Resetpassword'
 import Dashboard from './pages/Dashboard'
@@ -77,6 +78,9 @@ export default function App() {
               <Route path="my-vehicle"   element={<PrivateRoute roles={['driver']}><MyVehicle /></PrivateRoute>} />
               <Route path="my-documents" element={<PrivateRoute roles={['driver']}><MyDocuments /></PrivateRoute>} />
               <Route path="report-issue" element={<PrivateRoute roles={['driver']}><ReportIssue /></PrivateRoute>} />
+
+              {/* Available to all authenticated roles */}
+              <Route path="change-password" element={<ChangePassword />} />
             </Route>
           </Routes>
         </BrowserRouter>

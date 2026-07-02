@@ -3,8 +3,14 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Truck, Lock, Mail, User as UserIcon, Phone, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react'
 import { authAPI } from '../services/api'
 
+const ROLES = [
+  { value: 'driver',  label: 'Driver' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'admin',   label: 'Admin' },
+]
+
 export default function Register() {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '', role: 'driver' })
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -26,7 +32,7 @@ export default function Register() {
     }
     setLoading(true)
     try {
-      await authAPI.register({ name: form.name, email: form.email, phone: form.phone, password: form.password })
+      await authAPI.register({ name: form.name, email: form.email, phone: form.phone, password: form.password, role: form.role })
       setDone(true)
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed')
@@ -62,10 +68,10 @@ export default function Register() {
             <Truck size={24} color="#fff" />
           </div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em' }}>
-            Create your <span style={{ color: 'var(--brand)' }}>driver</span> account
+            Create your <span style={{ color: 'var(--brand)' }}>account</span>
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.83rem', marginTop: '4px' }}>
-            Admin and manager accounts are created internally by your fleet admin.
+            Sign up as a driver, manager, or admin.
           </p>
         </div>
 
@@ -92,6 +98,29 @@ export default function Register() {
               <div className="search-wrap">
                 <UserIcon size={15} className="search-icon" />
                 <input className="input" value={form.name} onChange={f('name')} placeholder="Ravi Kumar" required autoFocus />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Account type</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {ROLES.map(r => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, role: r.value }))}
+                    style={{
+                      flex: 1, padding: '9px', borderRadius: 'var(--radius)', cursor: 'pointer',
+                      fontSize: '0.85rem', fontWeight: 600, textAlign: 'center',
+                      border: form.role === r.value ? '1px solid var(--brand)' : '1px solid var(--border)',
+                      background: form.role === r.value ? 'var(--brand-light)' : 'var(--bg-input)',
+                      color: form.role === r.value ? 'var(--brand-dark)' : 'var(--text-secondary)',
+                      transition: 'var(--transition)',
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
               </div>
             </div>
 

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Truck, Users, Route, Fuel, Wrench,
   FileText, Bell, BarChart3, MapPin, LogOut, ChevronLeft,
   ChevronRight, UserCog, History, AlertOctagon,
-  ClipboardList
+  ClipboardList, KeyRound
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -48,6 +48,8 @@ const DRIVER_NAV = [
   { to: '/trip-history', icon: History,         label: 'Trip History'           },
   { to: '/my-documents', icon: FileText,        label: 'Documents'              },
   { to: '/report-issue', icon: AlertOctagon,    label: 'Report Issue'           },
+  { section: 'ACCOUNT' },
+  { to: '/change-password', icon: KeyRound,      label: 'Change Password'        },
 ]
 
 export default function Layout() {

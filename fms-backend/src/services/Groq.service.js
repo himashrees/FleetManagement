@@ -5,23 +5,52 @@
 const Groq = require('groq-sdk');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const MODEL = 'llama-3.3-70b-versatile';
+
+// Groq's free-tier rate limits are PER MODEL, not one shared pool.
+// If the primary model's daily quota is exhausted, fall back to other
+// models that still have quota left, instead of failing the whole insight.
+const MODEL_CHAIN = [
+  'llama-3.3-70b-versatile',   // primary — best quality
+  'llama-3.1-8b-instant',      // fallback 1 — separate quota, much higher daily cap
+  'openai/gpt-oss-120b',       // fallback 2 — separate quota again
+];
+
+function isRateLimitError(err) {
+  return err?.status === 429 || err?.code === 'rate_limit_exceeded'
+    || /rate.?limit/i.test(err?.message || '');
+}
 
 /**
  * Core helper — send a prompt, get plain text back.
  * All report functions go through here.
+ * Tries each model in MODEL_CHAIN in order, moving to the next only on a
+ * rate-limit (429). Any other error is thrown immediately.
  */
 async function ask(systemPrompt, userContent, maxTokens = 400) {
-  const chat = await groq.chat.completions.create({
-    model: MODEL,
-    max_tokens: maxTokens,
-    temperature: 0.4,   // low = factual, consistent
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user',   content: userContent  },
-    ],
-  });
-  return chat.choices[0]?.message?.content?.trim() ?? '';
+  let lastErr;
+  for (const model of MODEL_CHAIN) {
+    try {
+      const chat = await groq.chat.completions.create({
+        model,
+        max_tokens: maxTokens,
+        temperature: 0.4,   // low = factual, consistent
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userContent  },
+        ],
+      });
+      return chat.choices[0]?.message?.content?.trim() ?? '';
+    } catch (err) {
+      lastErr = err;
+      if (isRateLimitError(err)) {
+        console.warn(`[Groq] ${model} rate-limited, trying next model in chain…`);
+        continue; // try next model
+      }
+      throw err; // non-rate-limit error — don't mask it, fail fast
+    }
+  }
+  // Every model in the chain was rate-limited
+  throw lastErr;
 }
 
 // ── System prompt shared across all fleet reports ─────────────────────────────
@@ -128,6 +157,32 @@ Include one [RISK], one [SAVE], one [GOOD] point if the data supports it.`;
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5. MAINTENANCE ADVISOR — one-line narrative wrapping a deterministic
+//    prediction (the actual due-dates are computed in maintenance.controller,
+//    since date/km math needs to be exact, not guessed by the model).
+// ─────────────────────────────────────────────────────────────────────────────
+async function maintenanceAdvisorInsight(data) {
+  const lines = (data.predictions || [])
+    .map(p => `  ${p.label}: ${p.eta_text} (${p.urgency})`)
+    .join('\n');
+
+  const content = `
+Predictive Maintenance Snapshot — ${data.registration_no}:
+- Current odometer: ${data.odometer_km} km
+- Average daily travel: ${data.avg_daily_km} km/day
+- Previous service records: ${data.service_count}
+- Vehicle age: ${data.age_days} days
+
+Predictions:
+${lines}
+
+In 2 short sentences, tell the fleet manager what to do next. Lead with the most urgent item if any is 'urgent'. No bullet points, no headers, plain text only.`;
+
+  return ask(FLEET_SYSTEM, content, 150);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper: group fuel logs by vehicle for richer context
 // ─────────────────────────────────────────────────────────────────────────────
 function buildVehicleBreakdown(logs) {
@@ -153,4 +208,5 @@ module.exports = {
   fuelReportInsight,
   tripReportInsight,
   executiveSummary,
+  maintenanceAdvisorInsight,
 };

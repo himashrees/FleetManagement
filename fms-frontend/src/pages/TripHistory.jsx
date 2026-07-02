@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react'
-import { Search, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Eye, ChevronLeft, ChevronRight, Calendar, Play, CheckCircle2, XCircle } from 'lucide-react'
 import { tripAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
-import { LoadingState } from '../components/Common'
+import { LoadingState, KpiCards } from '../components/Common'
+
+/* KPI color palette (matches Vehicles page glow cards) */
+const TRIP_KPI_PALETTE = {
+  blue:  { accent: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', glow: 'rgba(29,78,216,0.20)' },
+  amber: { accent: '#d97706', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(217,119,6,0.20)' },
+  green: { accent: '#16a34a', bg: '#dcfce7', border: '#86efac', glow: 'rgba(22,163,74,0.20)' },
+  red:   { accent: '#dc2626', bg: '#fee2e2', border: '#fca5a5', glow: 'rgba(220,38,38,0.20)' },
+}
 
 const STATUS_STYLE = {
   in_progress: { label: 'Ongoing',   color: '#d97706', bg: '#fef3c7', dot: '#d97706' },
@@ -180,54 +188,12 @@ export default function TripHistory() {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-        {[
-          {
-            label: 'Total Trips', value: total, color: '#1d4ed8', iconBg: '#eff6ff', border: '#bfdbfe',
-            icon: (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-            ),
-          },
-          {
-            label: 'Ongoing', value: ongoing, color: '#d97706', iconBg: '#fef3c7', border: '#fde68a',
-            icon: (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" fill="#d97706" fillOpacity="0.15"/>
-              </svg>
-            ),
-          },
-          {
-            label: 'Completed', value: completed, color: '#16a34a', iconBg: '#dcfce7', border: '#86efac',
-            icon: (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" fill="#16a34a" fillOpacity="0.1"/>
-                <polyline points="7 13 10 16 17 9"/>
-              </svg>
-            ),
-          },
-          {
-            label: 'Cancelled', value: cancelled, color: '#dc2626', iconBg: '#fee2e2', border: '#fca5a5',
-            icon: (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" fill="#dc2626" fillOpacity="0.1"/>
-                <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-            ),
-          },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#fff', border: `1px solid ${s.border}`, borderRadius: 14, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 13, background: s.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 2px 8px ${s.iconBg}` }}>
-              {s.icon}
-            </div>
-            <div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>{s.label}</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.1 }}>{s.value}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <KpiCards columns={4} stats={[
+        { label: 'Total Trips', value: total,     Icon: Calendar,     ...TRIP_KPI_PALETTE.blue },
+        { label: 'Ongoing',     value: ongoing,    Icon: Play,         ...TRIP_KPI_PALETTE.amber },
+        { label: 'Completed',   value: completed,  Icon: CheckCircle2, ...TRIP_KPI_PALETTE.green },
+        { label: 'Cancelled',   value: cancelled,  Icon: XCircle,      ...TRIP_KPI_PALETTE.red },
+      ]} />
 
       {/* Table */}
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, overflow: 'hidden' }}>

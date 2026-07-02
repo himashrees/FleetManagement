@@ -15,6 +15,16 @@ const STATUS_BADGE = {
 }
 const AVAIL_BADGE = { available: 'badge-green', on_trip: 'badge-blue', off_duty: 'badge-slate', suspended: 'badge-red' }
 
+// "Active" is a coarser, account-level state — mirrors the ACTIVE/INACTIVE
+// summary cards above the table (anyone not off_duty/suspended counts as active).
+const ACTIVE_BADGE = {
+  true:  { cls: 'badge-green', dot: '#16a34a', label: 'Active'   },
+  false: { cls: 'badge-red',   dot: '#dc2626', label: 'Inactive' },
+}
+function isDriverActive(status) {
+  return status !== 'suspended' && status !== 'off_duty'
+}
+
 const EMPTY = {
   name: '', email: '', phone: '',
   dob: '', gender: '',
@@ -485,6 +495,7 @@ export default function Drivers() {
                 <tr><td colSpan={8}><EmptyState icon="🧑‍✈️" title="No drivers found" sub={search ? 'Try a different search' : 'Add a driver to get started'} /></td></tr>
               ) : filtered.map((d, i) => {
                 const s = STATUS_BADGE[d.status] || STATUS_BADGE.available
+                const a = ACTIVE_BADGE[isDriverActive(d.status)]
                 return (
                   <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setDetailDriver(d)}>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{i + 1}</td>
@@ -508,12 +519,7 @@ export default function Drivers() {
                     </td>
                     <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{d.license_number}</span></td>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{d.user?.phone || '—'}</td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', fontWeight: 600 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
-                        <span style={{ color: s.dot }}>{s.label}</span>
-                      </span>
-                    </td>
+                    <td><span className={`badge ${a.cls}`}>{a.label}</span></td>
                     <td><span className={`badge ${s.cls}`}>{s.label}</span></td>
                     <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: 5 }}>

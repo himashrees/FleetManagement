@@ -8,7 +8,14 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { driverAPI, tripAPI, alertAPI, documentAPI } from '../../services/api'
-import { LoadingState } from '../../components/Common'
+import { LoadingState, KpiCards } from '../../components/Common'
+
+/* KPI color palette (matches Vehicles page glow cards) */
+const DRIVER_KPI_PALETTE = {
+  green:  { accent: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', glow: 'rgba(16,185,129,0.20)' },
+  purple: { accent: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe', glow: 'rgba(139,92,246,0.20)' },
+  amber:  { accent: '#f59e0b', bg: '#fffbeb', border: '#fde68a', glow: 'rgba(245,158,11,0.20)' },
+}
 
 function RouteMap({ from, to, height = '100%' }) {
   useEffect(() => {
@@ -190,7 +197,23 @@ function ExpiryBadge({ expiryDate }) {
   return <span style={{ fontSize: '0.72rem', fontWeight: 600, background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 999 }}>Valid</span>
 }
 
-const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }
+const card = { background: '#fff', border: '1px solid #bfdbfe', borderRadius: 12, padding: 20 }
+
+/* CSS for the "moving" glow on the cards below the KPI row (className added alongside `card` style) */
+const DRIVER_CARD_CSS = `
+  @keyframes driver-card-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-4px); }
+  }
+  .driver-card {
+    animation: driver-card-float 6s ease-in-out infinite;
+    transition: box-shadow 0.25s ease;
+    box-shadow: 0 0 14px 0px rgba(29,78,216,0.16), 0 1px 3px rgba(15,23,42,0.04);
+  }
+  .driver-card:hover {
+    box-shadow: 0 0 24px 2px rgba(29,78,216,0.28), 0 8px 20px rgba(15,23,42,0.08);
+  }
+`
 const sectionTitle = { fontSize: '0.9rem', fontWeight: 700, color: '#111827', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }
 
 export default function DriverDashboard() {
@@ -274,10 +297,10 @@ export default function DriverDashboard() {
   const insuranceDoc = findDoc(vehicleDocs, 'insurance')
 
   const statCards = [
-    { icon: Play,        color: '#10b981', bg: '#f0fdf4', label: 'Active Trip',     value: activeTrip ? 1 : 0,              sub: activeTrip ? 'In Progress' : 'None active' },
-    { icon: CheckCircle2,color: '#8b5cf6', bg: '#f5f3ff', label: 'Completed',       value: completedToday,                  sub: 'Today' },
-    { icon: Navigation,  color: '#f59e0b', bg: '#fffbeb', label: 'Distance Today',  value: `${distanceToday.toFixed(0)} km`, sub: 'Total travelled' },
-    { icon: TrendingUp,  color: '#10b981', bg: '#f0fdf4', label: 'Safety Score',    value: profile?.safety_score ?? '—',   sub: profile?.safety_level || 'Not calculated' },
+    { Icon: Play,         label: 'Active Trip',    value: activeTrip ? 1 : 0,               sub: activeTrip ? 'In Progress' : 'None active', ...DRIVER_KPI_PALETTE.green },
+    { Icon: CheckCircle2, label: 'Completed',      value: completedToday,                    sub: 'Today',                                     ...DRIVER_KPI_PALETTE.purple },
+    { Icon: Navigation,   label: 'Distance Today', value: `${distanceToday.toFixed(0)} km`,  sub: 'Total travelled',                           ...DRIVER_KPI_PALETTE.amber },
+    { Icon: TrendingUp,   label: 'Safety Score',   value: profile?.safety_score ?? '—',      sub: profile?.safety_level || 'Not calculated',   ...DRIVER_KPI_PALETTE.green },
   ]
 
   return (
@@ -300,26 +323,14 @@ export default function DriverDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-        {statCards.map((s, i) => (
-          <div key={i} style={{ ...card, display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 10, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <s.icon size={20} color={s.color} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827', lineHeight: 1.1 }}>{s.value}</div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginTop: 2 }}>{s.label}</div>
-              <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{s.sub}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <KpiCards columns={4} stats={statCards} />
+      <style>{DRIVER_CARD_CSS}</style>
 
       {/* Current Trip + Vehicle */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, marginBottom: 16 }}>
 
         {/* Current Trip */}
-        <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
+        <div className="driver-card" style={{ ...card, display: 'flex', flexDirection: 'column', animationDelay: '0s' }}>
           <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -366,7 +377,7 @@ export default function DriverDashboard() {
         </div>
 
         {/* Assigned Vehicle */}
-        <div style={card}>
+        <div className="driver-card" style={{ ...card, animationDelay: '0.15s' }}>
           <div style={sectionTitle}>
             <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Truck size={14} color="#3b82f6" />
@@ -441,7 +452,7 @@ export default function DriverDashboard() {
       </div>
 
       {/* Today's Assigned Trips */}
-      <div style={{ ...card, marginBottom: 16 }}>
+      <div className="driver-card" style={{ ...card, marginBottom: 16, animationDelay: '0.3s' }}>
         <div style={sectionTitle}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Calendar size={14} color="#3b82f6" />
@@ -491,7 +502,7 @@ export default function DriverDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
 
         {/* Recent Trips */}
-        <div style={card}>
+        <div className="driver-card" style={{ ...card, animationDelay: '0.45s' }}>
           <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -518,7 +529,7 @@ export default function DriverDashboard() {
         </div>
 
         {/* Notifications */}
-        <div style={card}>
+        <div className="driver-card" style={{ ...card, animationDelay: '0.6s' }}>
           <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -550,7 +561,7 @@ export default function DriverDashboard() {
         </div>
 
         {/* Documents */}
-        <div style={card}>
+        <div className="driver-card" style={{ ...card, animationDelay: '0.75s' }}>
           <div style={{ ...sectionTitle, justifyContent: 'space-between' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 6, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

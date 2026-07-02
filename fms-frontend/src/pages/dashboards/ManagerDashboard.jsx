@@ -144,6 +144,7 @@ export default function AdminDashboard() {
   const realTripsData = dayOrder.map(day => ({ day, trips: tripsByDay[day] }))
   const maxTrips = Math.max(...realTripsData.map(d => d.trips), 1)
   const hasAnyTrips = trips.length > 0
+  const tripsThisWeekCount = realTripsData.reduce((s, d) => s + d.trips, 0)
 
   /* ── Fleet status pie ── */
   const statusCount = { Active: 0, Maintenance: 0, Inactive: 0, Retired: 0 }
@@ -345,7 +346,7 @@ export default function AdminDashboard() {
                     background: 'var(--green-bg)', color: 'var(--green)',
                     padding: '3px 10px', borderRadius: 99,
                   }}>
-                    {trips.length} total trips
+                    {tripsThisWeekCount} total trips
                   </div>
                 )}
               </div>
