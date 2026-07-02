@@ -5,9 +5,18 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid
 } from 'recharts'
 import { reportAPI, alertAPI, tripAPI, fuelAPI, vehicleAPI } from '../../services/api'
-import { LoadingState, EmptyState } from '../../components/Common'
+import { LoadingState, EmptyState, KpiCards } from '../../components/Common'
 
 const PIE_COLORS = ['#1d4ed8', '#d97706', '#16a34a', '#7c3aed', '#dc2626']
+
+/* ── Shared KPI color palette (matches Vehicles page glow cards) ── */
+const KPI_PALETTE = {
+  blue:  { accent: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', glow: 'rgba(29,78,216,0.20)' },
+  green: { accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.20)' },
+  sky:   { accent: '#0284c7', bg: '#e0f2fe', border: '#bae6fd', glow: 'rgba(2,132,199,0.20)' },
+  amber: { accent: '#d97706', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(217,119,6,0.20)' },
+  red:   { accent: '#dc2626', bg: '#fee2e2', border: '#fecaca', glow: 'rgba(220,38,38,0.20)' },
+}
 
 const tt = {
   contentStyle: {
@@ -18,86 +27,6 @@ const tt = {
   },
   labelStyle: { color: '#0f172a', fontWeight: 700, marginBottom: 4 },
   cursor: { fill: 'rgba(29,78,216,0.04)' },
-}
-
-/* ── Animated counter hook ── */
-function useCountUp(target, duration = 900) {
-  const [val, setVal] = useState(0)
-  const raf = useRef(null)
-  useEffect(() => {
-    if (target == null || isNaN(Number(target))) { setVal(target); return }
-    const num = Number(target)
-    const start = performance.now()
-    const tick = now => {
-      const p = Math.min((now - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - p, 3)
-      setVal(Math.round(eased * num))
-      if (p < 1) raf.current = requestAnimationFrame(tick)
-    }
-    raf.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf.current)
-  }, [target, duration])
-  return val
-}
-
-/* ── Animated stat card ── */
-function StatCard({ label, rawValue, sub, icon: Icon, color, prefix = '' }) {
-  const [visible, setVisible] = useState(false)
-  const ref = useRef(null)
-  const numeric = !isNaN(Number(String(rawValue).replace(/[^0-9.]/g, '')))
-    ? Number(String(rawValue).replace(/[^0-9.]/g, ''))
-    : null
-  const counted = useCountUp(visible ? (numeric ?? 0) : 0, 900)
-
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVisible(true) }, { threshold: 0.1 })
-    if (ref.current) obs.observe(ref.current)
-    return () => obs.disconnect()
-  }, [])
-
-  const displayVal = numeric !== null ? `${prefix}${counted}` : rawValue
-
-  const glowMap = {
-    blue: 'rgba(29,78,216,0.18)',
-    green: 'rgba(22,163,74,0.18)',
-    amber: 'rgba(217,119,6,0.18)',
-    red: 'rgba(220,38,38,0.18)',
-  }
-
-  return (
-    <div ref={ref} className={`stat-card ${color}`} style={{
-      padding: '16px 14px',
-      transition: 'box-shadow 0.25s, transform 0.25s',
-      cursor: 'default',
-    }}
-      onMouseEnter={e => {
-        e.currentTarget.style.transform = 'translateY(-3px) scale(1.02)'
-        e.currentTarget.style.boxShadow = `0 12px 28px ${glowMap[color] || 'rgba(0,0,0,0.1)'}, 0 2px 6px rgba(0,0,0,0.06)`
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.transform = 'translateY(0) scale(1)'
-        e.currentTarget.style.boxShadow = ''
-      }}
-    >
-      {/* animated icon ring */}
-      <div className={`stat-icon ${color}`} style={{
-        fontSize: 16, width: 38, height: 38,
-        position: 'relative', overflow: 'visible',
-      }}>
-        <Icon size={16} />
-        <span style={{
-          position: 'absolute', inset: -4,
-          borderRadius: '50%',
-          border: `2px solid ${glowMap[color]}`,
-          animation: 'pulse-ring 2.4s ease-in-out infinite',
-          pointerEvents: 'none',
-        }} />
-      </div>
-      <div className="stat-label" style={{ fontSize: '0.7rem' }}>{label}</div>
-      <div className="stat-value" style={{ fontSize: '1.5rem' }}>{displayVal ?? '—'}</div>
-      <div className="stat-sub">{sub}</div>
-    </div>
-  )
 }
 
 /* ── Custom Fuel Tooltip ── */
@@ -253,12 +182,12 @@ export default function AdminDashboard() {
   const severityBadge = { low: 'badge-blue', medium: 'badge-amber', high: 'badge-red', critical: 'badge-red' }
 
   const stats = summary ? [
-    { label: 'Total Vehicles',    rawValue: summary.totalVehicles,    sub: `${summary.activeVehicles} active`,      icon: Truck,         color: 'blue'  },
-    { label: 'Total Drivers',     rawValue: summary.totalDrivers,     sub: `${summary.availableDrivers} available`,  icon: Users,         color: 'blue'  },
-    { label: 'Active Trips',      rawValue: trips.filter(t => t.status === 'in_progress').length, sub: 'right now', icon: Route,         color: 'green' },
-    { label: 'Fuel Cost (Month)', rawValue: fuelCostMonth.toFixed(0), sub: 'this month', prefix: '₹',               icon: Fuel,          color: 'amber' },
-    { label: 'Maintenance Due',   rawValue: summary.maintenanceDue,   sub: 'vehicles overdue',                       icon: Wrench,        color: summary.maintenanceDue > 0 ? 'red' : 'green' },
-    { label: 'Alerts',            rawValue: alerts.length,            sub: 'unread',                                 icon: AlertTriangle, color: alerts.length > 0 ? 'red' : 'green' },
+    { label: 'Total Vehicles',    value: summary.totalVehicles,                                     sub: `${summary.activeVehicles} active`,     Icon: Truck,         ...KPI_PALETTE.blue },
+    { label: 'Total Drivers',     value: summary.totalDrivers,                                      sub: `${summary.availableDrivers} available`, Icon: Users,         ...KPI_PALETTE.sky },
+    { label: 'Active Trips',      value: trips.filter(t => t.status === 'in_progress').length,       sub: 'right now',                            Icon: Route,         ...KPI_PALETTE.green },
+    { label: 'Fuel Cost (Month)', value: `₹${fuelCostMonth.toFixed(0)}`,                             sub: 'this month',                           Icon: Fuel,          ...KPI_PALETTE.amber },
+    { label: 'Maintenance Due',   value: summary.maintenanceDue,                                     sub: 'vehicles overdue',                     Icon: Wrench,        ...KPI_PALETTE[summary.maintenanceDue > 0 ? 'red' : 'green'] },
+    { label: 'Alerts',            value: alerts.length,                                              sub: 'unread',                               Icon: AlertTriangle, ...KPI_PALETTE[alerts.length > 0 ? 'red' : 'green'] },
   ] : []
 
   return (
@@ -334,11 +263,7 @@ export default function AdminDashboard() {
       {loading ? <LoadingState label="Fetching fleet summary…" /> : (
         <>
           {/* ── 6 Stat Cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
-            {stats.map((s, i) => (
-              <StatCard key={i} {...s} />
-            ))}
-          </div>
+          <KpiCards stats={stats} columns={6} />
 
           {/* ── Charts Row ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>

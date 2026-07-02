@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { alertAPI, vehicleAPI, driverAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { KpiCards } from '../components/Common'
 import {
   AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
@@ -16,6 +17,23 @@ const SEV_COLOR   = { low: '#22c55e', medium: '#f59e0b', high: '#f97316', critic
 const SEV_BG      = { low: '#f0fdf4', medium: '#fffbeb', high: '#fff7ed', critical: '#fef2f2' }
 const SEV_TEXT    = { low: '#15803d', medium: '#b45309', high: '#c2410c', critical: '#b91c1c' }
 const SEV_BORDER  = { low: '#86efac', medium: '#fcd34d', high: '#fdba74', critical: '#fca5a5' }
+
+/* ── KPI color palette (matches Vehicles page glow cards) ── */
+const ALERT_KPI_PALETTE = {
+  indigo: { accent: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', glow: 'rgba(99,102,241,0.20)' },
+  red:    { accent: '#ef4444', bg: '#fef2f2', border: '#fecaca', glow: 'rgba(239,68,68,0.20)'  },
+  orange: { accent: '#f97316', bg: '#fff7ed', border: '#fed7aa', glow: 'rgba(249,115,22,0.20)' },
+  blue:   { accent: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', glow: 'rgba(59,130,246,0.20)' },
+  green:  { accent: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0', glow: 'rgba(34,197,94,0.20)'  },
+}
+
+/* bump the alpha of an 'rgba(r,g,b,a)' string, for a slightly stronger hover glow */
+function withAlpha(rgba, alpha) {
+  const m = /rgba?\(([^)]+)\)/.exec(rgba)
+  if (!m) return rgba
+  const [r, g, b] = m[1].split(',').map(p => p.trim())
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
 
 const TYPE_ICON = {
   speeding:        '🚨',
@@ -58,41 +76,6 @@ const StatusBadge = ({ read }) => (
     color:      read ? '#15803d' : '#b91c1c',
     border:     `1px solid ${read ? '#86efac' : '#fca5a5'}`,
   }}>{read ? 'Resolved' : 'Active'}</span>
-)
-
-/* ── KPI Card ───────────────────────────────────────────────── */
-const KpiCard = ({ icon: Icon, label, value, sub, color, bg }) => (
-  <div
-    className="kpi-card"
-    onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${color}48, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
-    onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${color}30`; e.currentTarget.style.transform = 'translateY(0)' }}
-    style={{
-      background: bg || '#fff',
-      border: '1px solid #e5e7eb', borderRadius: 12,
-      padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16,
-      boxShadow: `0 2px 8px ${color}30`,
-      transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
-      '--icon-glow': `${color}80`,
-    }}
-  >
-    <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
-      <div className="kpi-icon" style={{
-        width: 48, height: 48, borderRadius: 12,
-        background: color + '1a',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        position: 'relative', zIndex: 1, color,
-      }}><Icon size={22} /></div>
-      <div className="kpi-ring" style={{
-        position: 'absolute', inset: -4, borderRadius: 12,
-        border: `2px solid ${color}`, opacity: 0, pointerEvents: 'none',
-      }} />
-    </div>
-    <div>
-      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: '#111827', lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{sub}</div>}
-    </div>
-  </div>
 )
 
 /* ══════════════════════════════════════════════════════════════ */
@@ -290,13 +273,13 @@ export default function Alerts() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <KpiCard icon={Bell}          label="Total Alerts"    value={totalAlerts}    sub="This month"             color="#6366f1" />
-        <KpiCard icon={ShieldAlert}   label="Critical Alerts"  value={criticalAlerts} sub="Needs immediate action" color="#ef4444" />
-        <KpiCard icon={AlertTriangle} label="High Priority"    value={highAlerts}     sub="High priority alerts"   color="#f97316" />
-        <KpiCard icon={Info}          label="Medium Priority"  value={mediumAlerts}   sub="Medium priority alerts" color="#3b82f6" />
-        <KpiCard icon={CheckCheck}    label="Resolved"         value={resolvedAlerts} sub="Alerts resolved"        color="#22c55e" />
-      </div>
+      <KpiCards columns={5} stats={[
+        { label: 'Total Alerts',    value: totalAlerts,    sub: 'This month',             Icon: Bell,          ...ALERT_KPI_PALETTE.indigo },
+        { label: 'Critical Alerts', value: criticalAlerts, sub: 'Needs immediate action', Icon: ShieldAlert,   ...ALERT_KPI_PALETTE.red },
+        { label: 'High Priority',   value: highAlerts,     sub: 'High priority alerts',   Icon: AlertTriangle, ...ALERT_KPI_PALETTE.orange },
+        { label: 'Medium Priority', value: mediumAlerts,   sub: 'Medium priority alerts', Icon: Info,          ...ALERT_KPI_PALETTE.blue },
+        { label: 'Resolved',        value: resolvedAlerts, sub: 'Alerts resolved',        Icon: CheckCheck,    ...ALERT_KPI_PALETTE.green },
+      ]} />
 
       {/* ── Charts Row ── */}
       <style>{`
@@ -316,13 +299,18 @@ export default function Alerts() {
         }
         .alert-chart-card:hover {
           transform: translateY(-4px);
-          box-shadow: 0 16px 32px rgba(15,23,42,0.1), 0 4px 10px rgba(15,23,42,0.06);
         }
+        .alert-chart-card.glow-indigo:hover { box-shadow: 0 0 20px 1px ${withAlpha(ALERT_KPI_PALETTE.indigo.glow, 0.30)}, 0 8px 20px rgba(15,23,42,0.07); }
+        .alert-chart-card.glow-blue:hover   { box-shadow: 0 0 20px 1px ${withAlpha(ALERT_KPI_PALETTE.blue.glow, 0.30)}, 0 8px 20px rgba(15,23,42,0.07); }
+        .alert-chart-card.glow-orange:hover { box-shadow: 0 0 20px 1px ${withAlpha(ALERT_KPI_PALETTE.orange.glow, 0.30)}, 0 8px 20px rgba(15,23,42,0.07); }
       `}</style>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr', gap: 16, marginBottom: 24 }}>
 
         {/* Alerts by Type — Pie */}
-        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card glow-indigo" style={{
+          background: '#fff', border: `1px solid ${ALERT_KPI_PALETTE.indigo.border}`, borderRadius: 12, padding: '16px 20px',
+          boxShadow: `0 0 12px 0px ${withAlpha(ALERT_KPI_PALETTE.indigo.glow, 0.18)}, 0 1px 3px rgba(15,23,42,0.04)`,
+        }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Alerts by Type</span>
           </div>
@@ -353,7 +341,10 @@ export default function Alerts() {
         </div>
 
         {/* Trend — Area chart */}
-        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card glow-blue" style={{
+          background: '#fff', border: `1px solid ${ALERT_KPI_PALETTE.blue.border}`, borderRadius: 12, padding: '16px 20px',
+          boxShadow: `0 0 12px 0px ${withAlpha(ALERT_KPI_PALETTE.blue.glow, 0.18)}, 0 1px 3px rgba(15,23,42,0.04)`,
+        }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Alerts Trend (Last 7 Days)</div>
           <ResponsiveContainer width="100%" height={110}>
             <AreaChart data={trendData} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
@@ -373,7 +364,10 @@ export default function Alerts() {
         </div>
 
         {/* Alerts by Severity — Pie */}
-        <div className="alert-chart-card" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px' }}>
+        <div className="alert-chart-card glow-orange" style={{
+          background: '#fff', border: `1px solid ${ALERT_KPI_PALETTE.orange.border}`, borderRadius: 12, padding: '16px 20px',
+          boxShadow: `0 0 12px 0px ${withAlpha(ALERT_KPI_PALETTE.orange.glow, 0.18)}, 0 1px 3px rgba(15,23,42,0.04)`,
+        }}>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Alerts by Priority</div>
           {totalAlerts === 0 ? (
             <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, padding: '40px 0' }}>No data yet</div>

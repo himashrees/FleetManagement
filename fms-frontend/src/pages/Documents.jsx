@@ -3,7 +3,16 @@ import { RefreshCw, FileText, AlertTriangle, Upload, Eye, Download,
          XCircle, Clock, CheckCircle, X, Trash2, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { documentAPI, vehicleAPI, driverAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
-import { LoadingState } from '../components/Common'
+import { LoadingState, KpiCards } from '../components/Common'
+
+/* ── KPI color palette (matches Vehicles page glow cards) ── */
+const DOC_KPI_PALETTE = {
+  blue:   { accent: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', glow: 'rgba(59,130,246,0.20)' },
+  green:  { accent: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', glow: 'rgba(16,185,129,0.20)' },
+  amber:  { accent: '#f59e0b', bg: '#fffbeb', border: '#fde68a', glow: 'rgba(245,158,11,0.20)' },
+  red:    { accent: '#ef4444', bg: '#fef2f2', border: '#fecaca', glow: 'rgba(239,68,68,0.20)'  },
+  purple: { accent: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe', glow: 'rgba(139,92,246,0.20)' },
+}
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 const fileUrl  = (fp) => { if (!fp) return null; if (fp.startsWith('http')) return fp; return `${API_BASE}${fp.startsWith('/') ? '' : '/'}${fp}` }
@@ -234,49 +243,14 @@ export default function Documents() {
       </div>
 
       {/* Stat Cards */}
-      <style>{`
-        @keyframes kpi-ring-pulse {
-          0%   { transform: scale(1);   opacity: 0.7; }
-          70%  { transform: scale(1.8); opacity: 0;   }
-          100% { transform: scale(1);   opacity: 0;   }
-        }
-        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
-        .kpi-card:hover .kpi-icon { transform: scale(1.14) rotate(-6deg); }
-        .kpi-icon { transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1); }
-      `}</style>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 24 }}>
-        {[
-          { label: 'Total Documents', value: counts.total,      sub: 'All Documents',    color: '#3b82f6', bg: '#eff6ff'  },
-          { label: 'Valid Documents', value: counts.valid,      sub: 'Up to date',       color: '#10b981', bg: '#f0fdf4'  },
-          { label: 'Expiring Soon',   value: counts.expiring,   sub: 'Within 30 days',   color: '#f59e0b', bg: '#fffbeb'  },
-          { label: 'Expired',         value: counts.expired,    sub: 'Require Attention', color: '#ef4444', bg: '#fef2f2' },
-          { label: 'Document Types',  value: counts.types,      sub: 'Categories',       color: '#8b5cf6', bg: '#f5f3ff'  },
-          { label: 'Compliance Score',value: `${counts.compliance}%`, sub: counts.compliance >= 80 ? 'Good' : 'Fair', color: counts.compliance >= 80 ? '#10b981' : '#f59e0b', bg: counts.compliance >= 80 ? '#f0fdf4' : '#fffbeb' },
-        ].map((c) => (
-          <div key={c.label}
-            className="kpi-card"
-            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${c.color}48, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
-            onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${c.color}48`; e.currentTarget.style.transform = 'translateY(0)' }}
-            style={{
-              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px',
-              boxShadow: `0 2px 8px ${c.color}48`,
-              transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
-            }}>
-            <div style={{ position: 'relative', display: 'inline-flex' }}>
-              <div className="kpi-icon" style={{ width: 38, height: 38, borderRadius: 8, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative', zIndex: 1 }}>
-                <FileText size={17} color={c.color} />
-              </div>
-              <div className="kpi-ring" style={{
-                position: 'absolute', inset: -4, borderRadius: 8,
-                border: `2px solid ${c.color}`, opacity: 0, pointerEvents: 'none',
-              }} />
-            </div>
-            <div style={{ fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{c.label}</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</div>
-            <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 3 }}>{c.sub}</div>
-          </div>
-        ))}
-      </div>
+      <KpiCards columns={6} stats={[
+        { label: 'Total Documents',  value: counts.total,            sub: 'All Documents',     Icon: FileText, ...DOC_KPI_PALETTE.blue },
+        { label: 'Valid Documents',  value: counts.valid,            sub: 'Up to date',        Icon: FileText, ...DOC_KPI_PALETTE.green },
+        { label: 'Expiring Soon',    value: counts.expiring,         sub: 'Within 30 days',    Icon: FileText, ...DOC_KPI_PALETTE.amber },
+        { label: 'Expired',          value: counts.expired,          sub: 'Require Attention', Icon: FileText, ...DOC_KPI_PALETTE.red },
+        { label: 'Document Types',   value: counts.types,            sub: 'Categories',        Icon: FileText, ...DOC_KPI_PALETTE.purple },
+        { label: 'Compliance Score', value: `${counts.compliance}%`, sub: counts.compliance >= 80 ? 'Good' : 'Fair', Icon: FileText, ...DOC_KPI_PALETTE[counts.compliance >= 80 ? 'green' : 'amber'] },
+      ]} />
 
       {/* Main: Table + Sidebar */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>

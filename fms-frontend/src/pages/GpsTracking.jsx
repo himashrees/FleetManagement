@@ -354,7 +354,23 @@ import { MapPin, RefreshCw, Navigation, Activity, Zap, Map, Truck, Clock, AlertT
 import { gpsAPI, vehicleAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import Modal from '../components/Modal'
-import { LoadingState, EmptyState, PageHeader } from '../components/Common'
+import { LoadingState, EmptyState, PageHeader, KpiCards } from '../components/Common'
+
+/* KPI color palette (matches Vehicles page glow cards) */
+const GPS_KPI_PALETTE = {
+  blue:  { accent: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe', glow: 'rgba(29,78,216,0.20)' },
+  green: { accent: '#16a34a', bg: '#dcfce7', border: '#bbf7d0', glow: 'rgba(22,163,74,0.20)'  },
+  amber: { accent: '#b45309', bg: '#fef3c7', border: '#fde68a', glow: 'rgba(180,83,9,0.20)'   },
+  red:   { accent: '#dc2626', bg: '#fee2e2', border: '#fecaca', glow: 'rgba(220,38,38,0.20)'  },
+}
+
+/* soft ambient glow helper for non-KpiCards cards (e.g. the Live Map card) */
+function withAlpha(rgba, alpha) {
+  const m = /rgba?\(([^)]+)\)/.exec(rgba)
+  if (!m) return rgba
+  const [r, g, b] = m[1].split(',').map(p => p.trim())
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
 
 let L = null
 
@@ -454,50 +470,6 @@ function speedColor(kmh) {
   if (kmh > 40) return { bg: '#eff6ff', color: '#1d4ed8', label: 'Moving' }
   if (kmh > 0)  return { bg: '#f0fdf4', color: '#16a34a', label: 'Slow' }
   return { bg: '#fefce8', color: '#b45309', label: 'Idle' }
-}
-
-// ── Stat chip ──────────────────────────────────────────────────────────────
-function StatChip({ icon: Icon, value, label, color }) {
-  return (
-    <div
-      className="kpi-card"
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 16px 36px ${color}40, 0 3px 10px rgba(0,0,0,0.06)`; e.currentTarget.style.transform = 'translateY(-5px)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${color}25`; e.currentTarget.style.transform = 'translateY(0)' }}
-      style={{
-        background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
-        padding: '14px 16px', minWidth: 0,
-        boxShadow: `0 2px 8px ${color}25`,
-        transition: 'transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease',
-        '--icon-glow': `${color}80`,
-      }}
-    >
-      <style>{`
-        @keyframes kpi-ring-pulse {
-          0%   { transform: scale(1);   opacity: 0.7; }
-          70%  { transform: scale(1.8); opacity: 0;   }
-          100% { transform: scale(1);   opacity: 0;   }
-        }
-        .kpi-card:hover .kpi-ring { animation: kpi-ring-pulse 1.6s ease-in-out infinite; }
-        .kpi-card:hover .kpi-icon { transform: scale(1.18) rotate(-8deg); box-shadow: 0 6px 16px var(--icon-glow, rgba(0,0,0,0.18)); }
-        .kpi-icon { transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s ease; }
-      `}</style>
-      <div style={{ position: 'relative', display: 'inline-flex', marginBottom: 8 }}>
-        <div className="kpi-icon" style={{
-          width: 32, height: 32, borderRadius: 9, background: `${color}1a`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          position: 'relative', zIndex: 1,
-        }}>
-          <Icon size={15} color={color} />
-        </div>
-        <div className="kpi-ring" style={{
-          position: 'absolute', inset: -4, borderRadius: 9,
-          border: `2px solid ${color}`, opacity: 0, pointerEvents: 'none',
-        }} />
-      </div>
-      <div style={{ fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
-      <span style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'var(--font-display)', color }}>{value}</span>
-    </div>
-  )
 }
 
 // ── Vehicle card ───────────────────────────────────────────────────────────
@@ -880,12 +852,12 @@ export default function GpsTracking() {
       </PageHeader>
 
       {/* ── Stats row ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
-        <StatChip icon={Truck} value={positions.length} label="Total tracked" color="var(--brand)" />
-        <StatChip icon={Navigation} value={moving} label="Moving" color="#16a34a" />
-        <StatChip icon={Activity} value={idle} label="Idle" color="#b45309" />
-        <StatChip icon={AlertTriangle} value={speeding} label="Speeding >80" color="#dc2626" />
-      </div>
+      <KpiCards columns={4} stats={[
+        { label: 'Total tracked', value: positions.length, Icon: Truck,         ...GPS_KPI_PALETTE.blue },
+        { label: 'Moving',        value: moving,            Icon: Navigation,    ...GPS_KPI_PALETTE.green },
+        { label: 'Idle',          value: idle,               Icon: Activity,      ...GPS_KPI_PALETTE.amber },
+        { label: 'Speeding >80',  value: speeding,           Icon: AlertTriangle, ...GPS_KPI_PALETTE.red },
+      ]} />
 
       {/* ── Map card ───────────────────────────────────────────────────── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '16px' }}>
